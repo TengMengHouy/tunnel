@@ -6,6 +6,5 @@ public record AddTargetResponse(
         UUID targetId,
         String publicUrl,
         String key,
-        String ipAddress,
         int localPort
 ) {}

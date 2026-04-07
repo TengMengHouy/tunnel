@@ -53,14 +53,12 @@ public class TunnelApplicationService {
                                     targetId,
                                     publicUrl,
                                     key,
-                                    req.ipAddress(),
                                     req.localPort()
                             ))
                             .thenApply(result -> new AddTargetResponse(
                                     targetId,
                                     publicUrl,
                                     key,
-                                    req.ipAddress(),
                                     req.localPort()
                             ));
                 });
