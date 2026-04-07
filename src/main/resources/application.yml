@@ -1,0 +1,55 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: tunnel-server
+
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    username: ${PG_USERNAME}
+    password: ${PG_PASSWORD}
+    url: jdbc:postgresql://${PG_HOST}:${PG_PORT}/${PG_DB_NAME}
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+    open-in-view: false
+  liquibase:
+    enabled: true
+    driver-class-name: org.postgresql.Driver
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+app:
+  auth:
+    mock-enabled: true
+  iam:
+    base-url: http://localhost:9090
+axon:
+  axonserver:
+    enabled: false
+
+  kafka:
+    bootstrap-servers: ${KAFKA_URL}
+    default-topic: tunnel.events
+    client-id: kafka-axon-tunnel
+    message-converter-mode: default
+    properties:
+      security.protocol: PLAINTEXT
+
+    publisher:
+      confirmation-mode: transactional
+
+    producer:
+      transaction-id-prefix: kafka-axon-tunnel-
+      retries: 5
+      event-processor-mode: tracking
+
+    consumer:
+      event-processor-mode: tracking
+      properties:
+        isolation.level: read_committed
+
+  serializer:
+    general: jackson
+    events: jackson
+    messages: jackson

@@ -1,0 +1,167 @@
+databaseChangeLog:
+  - changeSet:
+      id: 009-create-domain-event-sequence
+      author: stadoor
+      changes:
+        - createSequence:
+            sequenceName: domain_event_entry_seq
+            startValue: 1
+            incrementBy: 50
+
+  - changeSet:
+      id: 010-create-domain-event-entry
+      author: stadoor
+      changes:
+        - createTable:
+            tableName: domain_event_entry
+            columns:
+              - column:
+                  name: global_index
+                  type: BIGINT
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: event_identifier
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: meta_data
+                  type: OID
+              - column:
+                  name: payload
+                  type: OID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: payload_revision
+                  type: VARCHAR(255)
+              - column:
+                  name: payload_type
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: time_stamp
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: aggregate_identifier
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: sequence_number
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: type
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+
+        - addDefaultValue:
+            tableName: domain_event_entry
+            columnName: global_index
+            defaultValueSequenceNext: domain_event_entry_seq
+
+        - addUniqueConstraint:
+            tableName: domain_event_entry
+            columnNames: aggregate_identifier, sequence_number, type
+            constraintName: uq_domain_event_aggregate_seq_type
+
+  - changeSet:
+      id: 011-create-snapshot-event-entry
+      author: stadoor
+      changes:
+        - createTable:
+            tableName: snapshot_event_entry
+            columns:
+              - column:
+                  name: aggregate_identifier
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: sequence_number
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: type
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: event_identifier
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: meta_data
+                  type: OID
+              - column:
+                  name: payload
+                  type: OID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: payload_revision
+                  type: VARCHAR(255)
+              - column:
+                  name: payload_type
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: time_stamp
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+
+        - addPrimaryKey:
+            tableName: snapshot_event_entry
+            columnNames: aggregate_identifier, sequence_number, type
+            constraintName: pk_snapshot_event_entry
+
+  - changeSet:
+      id: 012-create-token-entry
+      author: stadoor
+      changes:
+        - createTable:
+            tableName: token_entry
+            columns:
+              - column:
+                  name: processor_name
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: segment
+                  type: INTEGER
+                  constraints:
+                    nullable: false
+              - column:
+                  name: owner
+                  type: VARCHAR(255)
+              - column:
+                  name: timestamp
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: token
+                  type: OID
+              - column:
+                  name: token_type
+                  type: VARCHAR(255)
+
+        - addPrimaryKey:
+            tableName: token_entry
+            columnNames: processor_name, segment
+            constraintName: pk_token_entry

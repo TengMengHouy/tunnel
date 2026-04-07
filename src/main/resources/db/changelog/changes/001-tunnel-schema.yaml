@@ -1,0 +1,130 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-create-tunnels
+      author: stadoor
+      changes:
+        - createTable:
+            tableName: tunnels
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: user_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: base_path
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+
+        - addUniqueConstraint:
+            tableName: tunnels
+            columnNames: base_path
+            constraintName: uq_tunnels_base_path
+
+  - changeSet:
+      id: 002-create-tunnel-targets
+      author: stadoor
+      changes:
+        - createTable:
+            tableName: tunnel_targets
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tunnel_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: public_url
+                  type: VARCHAR(500)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: key
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: local_port
+                  type: INTEGER
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+
+        - addUniqueConstraint:
+            tableName: tunnel_targets
+            columnNames: key
+            constraintName: uq_tunnel_targets_key
+
+        - addForeignKeyConstraint:
+            baseTableName: tunnel_targets
+            baseColumnNames: tunnel_id
+            referencedTableName: tunnels
+            referencedColumnNames: id
+            constraintName: fk_tunnel_targets_tunnel
+
+  - changeSet:
+      id: 003-create-tunnel-sessions
+      author: stadoor
+      changes:
+        - createTable:
+            tableName: tunnel_sessions
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tunnel_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: connection_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: connected_at
+                  type: TIMESTAMP
+              - column:
+                  name: disconnected_at
+                  type: TIMESTAMP
+
+        - addForeignKeyConstraint:
+            baseTableName: tunnel_sessions
+            baseColumnNames: tunnel_id
+            referencedTableName: tunnels
+            referencedColumnNames: id
+            constraintName: fk_tunnel_sessions_tunnel
