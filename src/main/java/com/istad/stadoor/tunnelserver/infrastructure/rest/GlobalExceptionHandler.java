@@ -45,4 +45,23 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
     }
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", ex.getMessage() != null ? ex.getMessage() : "Bad request");
+        body.put("status", 400);
+        body.put("timestamp", Instant.now().toString());
+        return ResponseEntity.badRequest().body(body);
+    }
+    @ExceptionHandler(org.springframework.web.bind.MethodArgumentNotValidException.class)
+    public ResponseEntity<Map<String, Object>> handleValidation(
+            org.springframework.web.bind.MethodArgumentNotValidException ex) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", ex.getBindingResult().getFieldError() != null
+                ? ex.getBindingResult().getFieldError().getDefaultMessage()
+                : "Validation failed");
+        body.put("status", 400);
+        body.put("timestamp", Instant.now().toString());
+        return ResponseEntity.badRequest().body(body);
+    }
 }
