@@ -53,18 +53,8 @@ public class TunnelAggregate {
     public void handle(AddTunnelTargetCommand cmd) {
         guardActive();
 
-        boolean keyExists = targets.stream()
-                .anyMatch(t -> t.getKey().equals(cmd.key()));
-        if (keyExists) {
+        if (targets.stream().anyMatch(t -> t.getKey().equals(cmd.key()))) {
             throw new IllegalArgumentException("Duplicate target key: " + cmd.key());
-        }
-
-        if (cmd.ipAddress() == null || cmd.ipAddress().isBlank()) {
-            throw new IllegalArgumentException("ipAddress is required");
-        }
-
-        if (cmd.localPort() < 1 || cmd.localPort() > 65535) {
-            throw new IllegalArgumentException("Invalid local port: " + cmd.localPort());
         }
 
         AggregateLifecycle.apply(new TunnelTargetAddedEvent(
@@ -72,9 +62,21 @@ public class TunnelAggregate {
                 cmd.tunnelId(),
                 cmd.publicUrl(),
                 cmd.key(),
-                cmd.ipAddress(),
+                cmd.ipAddress(), // Event gets IP
                 cmd.localPort(),
                 LocalDateTime.now()
+        ));
+    }
+
+    @EventSourcingHandler
+    public void on(TunnelTargetAddedEvent event) {
+        this.targets.add(new TunnelTarget(
+                event.targetId(),
+                event.publicUrl(),
+                event.key(),
+                event.ipAddress(), // internal entity gets IP
+                event.localPort(),
+                event.createdAt()
         ));
     }
 
@@ -133,18 +135,6 @@ public class TunnelAggregate {
         this.createdAt = event.createdAt();
         this.targets = new ArrayList<>();
         this.sessions = new ArrayList<>();
-    }
-
-    @EventSourcingHandler
-    public void on(TunnelTargetAddedEvent event) {
-        this.targets.add(new TunnelTarget(
-                event.targetId(),
-                event.publicUrl(),
-                event.key(),
-                event.ipAddress(),
-                event.localPort(),
-                event.createdAt()
-        ));
     }
 
     @EventSourcingHandler

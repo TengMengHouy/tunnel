@@ -41,7 +41,7 @@ public class TunnelProjection {
                 e.tunnelId(),
                 e.publicUrl(),
                 e.key(),
-                e.ipAddress(),
+                e.ipAddress(), // saving to projection
                 e.localPort(),
                 e.createdAt()
         ));

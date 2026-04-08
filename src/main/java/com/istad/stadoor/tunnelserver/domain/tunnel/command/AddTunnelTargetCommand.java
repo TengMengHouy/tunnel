@@ -9,5 +9,6 @@ public record AddTunnelTargetCommand(
         UUID targetId,
         String publicUrl,
         String key,
+        String ipAddress,
         int localPort
 ) {}

@@ -20,7 +20,7 @@ public class TunnelTargetView {
     @Column(name = "key", nullable = false, unique = true)
     private String key;
 
-    @Column(name = "ip_address", nullable = false)
+    @Column(name = "ip_address", nullable = false) // Database gets IP
     private String ipAddress;
 
     @Column(name = "local_port", nullable = false)
@@ -29,11 +29,9 @@ public class TunnelTargetView {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
-    protected TunnelTargetView() {
-    }
+    protected TunnelTargetView() {}
 
-    public TunnelTargetView(UUID id, UUID tunnelId, String publicUrl,
-                            String key, String ipAddress, int localPort, LocalDateTime createdAt) {
+    public TunnelTargetView(UUID id, UUID tunnelId, String publicUrl, String key, String ipAddress, int localPort, LocalDateTime createdAt) {
         this.id = id;
         this.tunnelId = tunnelId;
         this.publicUrl = publicUrl;

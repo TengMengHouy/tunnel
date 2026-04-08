@@ -38,7 +38,7 @@ public class TunnelApplicationService {
         return commandGateway.send(new DeactivateTunnelCommand(tunnelId));
     }
 
-    public CompletableFuture<AddTargetResponse> addTarget(UUID tunnelId, AddTargetRequest req) {
+    public CompletableFuture<TargetResponse> addTarget(UUID tunnelId, AddTargetRequest req) {
         return queryGateway.query(
                         new FindTunnelByIdQuery(tunnelId),
                         ResponseTypes.instanceOf(TunnelView.class)
@@ -53,17 +53,20 @@ public class TunnelApplicationService {
                                     targetId,
                                     publicUrl,
                                     key,
+                                    req.ipAddress(), // using the IP
                                     req.localPort()
                             ))
-                            .thenApply(result -> new AddTargetResponse(
+                            .thenApply(result -> new TargetResponse(
                                     targetId,
+                                    tunnelId,
                                     publicUrl,
                                     key,
-                                    req.localPort()
+                                    req.ipAddress(),
+                                    req.localPort(),
+                                    java.time.LocalDateTime.now()
                             ));
                 });
     }
-
     public CompletableFuture<UUID> openSession(UUID tunnelId, OpenSessionRequest req) {
         UUID sessionId = UUID.randomUUID();
         UUID connectionId = UUID.randomUUID();
