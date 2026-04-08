@@ -48,7 +48,7 @@ public class TunnelController {
     }
 
     @PostMapping("/{tunnelId}/targets")
-    public CompletableFuture<ResponseEntity<AddTargetResponse>> addTarget(
+    public CompletableFuture<ResponseEntity<TargetResponse>> addTarget(
             @PathVariable UUID tunnelId,
             @Valid @RequestBody AddTargetRequest req) {
         return svc.addTarget(tunnelId, req)
