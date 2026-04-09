@@ -7,5 +7,6 @@ import jakarta.validation.constraints.NotBlank;
 public record AddTargetRequest(
         @NotBlank
         String ipAddress, // server accepts IP
-        @Min(1) @Max(65535) int localPort
+        @Min(1) @Max(65535)
+        int localPort
 ) {}

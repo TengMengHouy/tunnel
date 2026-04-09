@@ -1,13 +1,17 @@
 package com.istad.stadoor.tunnelserver.query.tunnel.model;
 
 import jakarta.persistence.*;
-import lombok.Getter;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-@Getter
 @Entity
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 @Table(name = "tunnel_targets")
 public class TunnelTargetView {
 
@@ -31,17 +35,5 @@ public class TunnelTargetView {
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
-
-    protected TunnelTargetView() {}
-
-    public TunnelTargetView(UUID id, UUID tunnelId, String publicUrl, String key, String ipAddress, int localPort, LocalDateTime createdAt) {
-        this.id = id;
-        this.tunnelId = tunnelId;
-        this.publicUrl = publicUrl;
-        this.key = key;
-        this.ipAddress = ipAddress;
-        this.localPort = localPort;
-        this.createdAt = createdAt;
-    }
 
 }

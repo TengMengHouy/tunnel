@@ -26,7 +26,6 @@ app:
 axon:
   axonserver:
     enabled: false
-
   kafka:
     bootstrap-servers: ${KAFKA_URL}
     default-topic: tunnel.events
@@ -34,20 +33,16 @@ axon:
     message-converter-mode: default
     properties:
       security.protocol: PLAINTEXT
-
     publisher:
       confirmation-mode: transactional
-
     producer:
       transaction-id-prefix: kafka-axon-tunnel-
       retries: 5
-      event-processor-mode: tracking
-
+      # ❌ REMOVE THIS — event-processor-mode does not belong under producer
     consumer:
-      event-processor-mode: tracking
+      event-processor-mode: tracking  # ✅ only here
       properties:
         isolation.level: read_committed
-
   serializer:
     general: jackson
     events: jackson
