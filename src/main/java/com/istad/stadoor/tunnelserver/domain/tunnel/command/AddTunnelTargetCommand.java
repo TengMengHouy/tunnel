@@ -5,7 +5,8 @@ import org.axonframework.modelling.command.TargetAggregateIdentifier;
 import java.util.UUID;
 
 public record AddTunnelTargetCommand(
-        @TargetAggregateIdentifier UUID tunnelId,
+        @TargetAggregateIdentifier
+        UUID tunnelId,
         UUID targetId,
         String publicUrl,
         String key,

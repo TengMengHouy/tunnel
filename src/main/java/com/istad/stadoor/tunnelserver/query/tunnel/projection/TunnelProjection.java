@@ -3,10 +3,12 @@ package com.istad.stadoor.tunnelserver.query.tunnel.projection;
 import com.istad.stadoor.tunnelserver.domain.tunnel.event.*;
 import com.istad.stadoor.tunnelserver.query.tunnel.model.*;
 import com.istad.stadoor.tunnelserver.query.tunnel.repository.*;
+import lombok.extern.slf4j.Slf4j;
 import org.axonframework.config.ProcessingGroup;
 import org.axonframework.eventhandling.EventHandler;
 import org.springframework.stereotype.Component;
 
+@Slf4j
 @Component
 @ProcessingGroup("tunnel-projection")
 public class TunnelProjection {
@@ -36,25 +38,22 @@ public class TunnelProjection {
 
     @EventHandler
     public void on(TunnelTargetAddedEvent e) {
+        log.info(">>> TunnelTargetAddedEvent received: {}", e.targetId()); // add this
         targetRepo.save(new TunnelTargetView(
-                e.targetId(),
-                e.tunnelId(),
-                e.publicUrl(),
-                e.key(),
-                e.ipAddress(), // saving to projection
-                e.localPort(),
-                e.createdAt()
+                e.targetId(), e.tunnelId(), e.publicUrl(),
+                e.key(), e.ipAddress(), e.localPort(), e.createdAt()
         ));
     }
 
     @EventHandler
     public void on(TunnelSessionOpenedEvent e) {
-        TunnelSessionView tunnelSessionView = TunnelSessionView.builder()
+        log.info(">>> TunnelSessionOpenedEvent received: {}", e.sessionId()); // add this
+        TunnelSessionView view = TunnelSessionView.builder()
                 .id(e.sessionId())
                 .tunnelId(e.tunnelId())
                 .connectedAt(e.connectedAt())
                 .build();
-        sessionRepo.save(tunnelSessionView);
+        sessionRepo.save(view);
     }
 
     @EventHandler

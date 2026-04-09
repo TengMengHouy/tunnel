@@ -95,15 +95,20 @@ public class TunnelAggregate {
     @CommandHandler
     public void handle(CloseTunnelSessionCommand cmd) {
         TunnelSession session = sessions.stream()
-            .filter(s -> s.getSessionId().equals(cmd.sessionId()))
-            .findFirst()
-            .orElseThrow(() -> new IllegalArgumentException("Session not found: " + cmd.sessionId()));
+                .filter(s -> s.getSessionId().equals(cmd.sessionId()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Session not found: " + cmd.sessionId()));
 
         if (!session.isActive()) {
-            return;
+            return; // already closed, do nothing (idempotent)
         }
-        AggregateLifecycle.apply(session
-        );
+
+        // ✅ Apply the correct event instead of the entity
+        AggregateLifecycle.apply(new TunnelSessionClosedEvent(
+                session.getSessionId(),
+                cmd.tunnelId(),
+                LocalDateTime.now()
+        ));
     }
 
     @CommandHandler
