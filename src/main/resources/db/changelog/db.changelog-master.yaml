@@ -3,5 +3,3 @@ databaseChangeLog:
       file: db/changelog/changes/001-tunnel-schema.yaml
   - include:
       file: db/changelog/changes/002-axon-schema.yaml
-  - include:
-      file: db/changelog/changes/09-01-changelog.xml
