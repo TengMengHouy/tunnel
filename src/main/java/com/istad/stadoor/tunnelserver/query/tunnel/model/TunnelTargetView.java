@@ -1,9 +1,12 @@
 package com.istad.stadoor.tunnelserver.query.tunnel.model;
 
 import jakarta.persistence.*;
+import lombok.Getter;
+
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+@Getter
 @Entity
 @Table(name = "tunnel_targets")
 public class TunnelTargetView {
@@ -41,11 +44,4 @@ public class TunnelTargetView {
         this.createdAt = createdAt;
     }
 
-    public UUID getId() { return id; }
-    public UUID getTunnelId() { return tunnelId; }
-    public String getPublicUrl() { return publicUrl; }
-    public String getKey() { return key; }
-    public String getIpAddress() { return ipAddress; }
-    public int getLocalPort() { return localPort; }
-    public LocalDateTime getCreatedAt() { return createdAt; }
 }
