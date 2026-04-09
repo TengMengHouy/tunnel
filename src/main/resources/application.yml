@@ -1,9 +1,9 @@
 server:
   port: ${PORT:8080}
+
 spring:
   application:
     name: tunnel-server
-
   datasource:
     driver-class-name: org.postgresql.Driver
     username: ${PG_USERNAME}
@@ -18,11 +18,13 @@ spring:
     enabled: true
     driver-class-name: org.postgresql.Driver
     change-log: classpath:db/changelog/db.changelog-master.yaml
+
 app:
   auth:
     mock-enabled: true
   iam:
     base-url: http://localhost:9090
+
 axon:
   axonserver:
     enabled: false
@@ -32,15 +34,16 @@ axon:
     client-id: kafka-axon-tunnel
     message-converter-mode: default
     properties:
-      security.protocol: PLAINTEXT
+      security.protocol: SASL_PLAINTEXT
+      sasl.mechanism: PLAIN
+      sasl.jaas.config: "org.apache.kafka.common.security.plain.PlainLoginModule required username=\"kafka\" password=\"${KAFKA_PASSWORD}\";"
     publisher:
       confirmation-mode: transactional
     producer:
       transaction-id-prefix: kafka-axon-tunnel-
       retries: 5
-      # ❌ REMOVE THIS — event-processor-mode does not belong under producer
     consumer:
-      event-processor-mode: tracking  # ✅ only here
+      event-processor-mode: tracking
       properties:
         isolation.level: read_committed
   serializer:
