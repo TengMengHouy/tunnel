@@ -10,24 +10,23 @@ import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
-@ProcessingGroup("tunnel-projection")
 public class TunnelProjection {
 
-    private final TunnelViewRepository tunnelRepo;
-    private final TunnelTargetViewRepository targetRepo;
-    private final TunnelSessionViewRepository sessionRepo;
+    private final TunnelEntityRepository tunnelRepo;
+    private final TunnelTargetEntityRepository targetRepo;
+    private final TunnelSessionEntityRepository sessionRepo;
 
-    public TunnelProjection(TunnelViewRepository tunnelRepo,
-                            TunnelTargetViewRepository targetRepo,
-                            TunnelSessionViewRepository sessionRepo) {
+    public TunnelProjection(TunnelEntityRepository tunnelRepo,
+                            TunnelTargetEntityRepository targetRepo,
+                            TunnelSessionEntityRepository sessionRepo) {
         this.tunnelRepo = tunnelRepo;
         this.targetRepo = targetRepo;
         this.sessionRepo = sessionRepo;
     }
-
+//Entity
     @EventHandler
     public void on(TunnelCreatedEvent e) {
-        tunnelRepo.save(new TunnelView(
+        tunnelRepo.save(new TunnelEntity(
             e.tunnelId(),
             e.userId(),
             e.basePath(),
@@ -39,7 +38,7 @@ public class TunnelProjection {
     @EventHandler
     public void on(TunnelTargetAddedEvent e) {
         log.info(">>> TunnelTargetAddedEvent received: {}", e.targetId()); // add this
-        targetRepo.save(new TunnelTargetView(
+        targetRepo.save(new TunnelTargetEntity(
                 e.targetId(), e.tunnelId(), e.publicUrl(),
                 e.key(), e.ipAddress(), e.localPort(), e.createdAt()
         ));
@@ -48,7 +47,7 @@ public class TunnelProjection {
     @EventHandler
     public void on(TunnelSessionOpenedEvent e) {
         log.info(">>> TunnelSessionOpenedEvent received: {}", e.sessionId()); // add this
-        TunnelSessionView view = TunnelSessionView.builder()
+        TunnelSessionEntity view = TunnelSessionEntity.builder()
                 .id(e.sessionId())
                 .tunnelId(e.tunnelId())
                 .connectedAt(e.connectedAt())

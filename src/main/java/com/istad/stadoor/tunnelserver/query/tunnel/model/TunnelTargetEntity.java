@@ -15,7 +15,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Table(name = "tunnel_targets")
-public class TunnelTargetView {
+public class TunnelTargetEntity {
 
     @Id
     private UUID id;

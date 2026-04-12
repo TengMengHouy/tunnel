@@ -13,7 +13,7 @@ import java.util.UUID;
 @AllArgsConstructor
 @NoArgsConstructor
 @Table(name = "tunnels")
-public class TunnelView {
+public class TunnelEntity {
 
     @Id
     private UUID id;

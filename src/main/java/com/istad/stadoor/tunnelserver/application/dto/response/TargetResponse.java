@@ -1,6 +1,6 @@
 package com.istad.stadoor.tunnelserver.application.dto.response;
 
-import com.istad.stadoor.tunnelserver.query.tunnel.model.TunnelTargetView;
+import com.istad.stadoor.tunnelserver.query.tunnel.model.TunnelTargetEntity;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -14,7 +14,7 @@ public record TargetResponse(
         int localPort,
         LocalDateTime createdAt
 ) {
-    public static TargetResponse from(TunnelTargetView v) {
+    public static TargetResponse from(TunnelTargetEntity v) {
         return new TargetResponse(
                 v.getId(),
                 v.getTunnelId(),

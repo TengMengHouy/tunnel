@@ -15,7 +15,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @Builder
 @Table(name = "tunnel_sessions")
-public class TunnelSessionView {
+public class TunnelSessionEntity {
 
     @Id
     private UUID id;

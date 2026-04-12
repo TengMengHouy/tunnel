@@ -6,9 +6,9 @@ spring:
     name: tunnel-server
   datasource:
     driver-class-name: org.postgresql.Driver
-    username: ${PG_USERNAME}
-    password: ${PG_PASSWORD}
-    url: jdbc:postgresql://${PG_HOST}:${PG_PORT}/${PG_DB_NAME}
+    username: itpusr
+    password: itp@168
+    url: jdbc:postgresql://localhost:5168/itp_main_db
   jpa:
     hibernate:
       ddl-auto: none
@@ -33,21 +33,22 @@ axon:
   # This service's own read-model (TunnelProjection) is updated directly via
   # Axon's local subscribing event processor — no Kafka consumer is needed here.
   kafka:
-    bootstrap-servers: ${KAFKA_URL}
-    default-topic: tunnel.events
-    client-id: kafka-axon-tunnel
-    message-converter-mode: default
+    bootstrap-servers: localhost:29092,localhost:29094,localhost:29096
+    default-topic: Axon.AccountCQRS.Events
+    client-id: kafka-axon-account
+    message-converter-mode: default # alternative is cloud_event <https://cloudevents.io/>
     properties:
-      security.protocol: SASL_PLAINTEXT
-      sasl.mechanism: PLAIN
-      sasl.jaas.config: "org.apache.kafka.common.security.plain.PlainLoginModule required username=\"kafka\" password=\"${KAFKA_PASSWORD}\";"
+      security.protocol: PLAINTEXT # PLAINTEXT for no security purpose
     publisher:
       confirmation-mode: transactional
     producer:
-      transaction-id-prefix: kafka-axon-tunnel-
-      retries: 5
-    # consumer section removed — this service does not consume from Kafka
-
+      transaction-id-prefix: kafka-axon-
+      retries: 5 # bigger than zero in case of using transactional confirmation-mode
+      event-processor-mode: tracking
+  #    consumer:
+  #      event-processor-mode: subscribing
+  #      properties:
+  #        isolation.level: read_committed
   serializer:
     general: jackson
     events: jackson

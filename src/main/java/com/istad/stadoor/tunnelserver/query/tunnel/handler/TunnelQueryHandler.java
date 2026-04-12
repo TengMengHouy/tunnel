@@ -11,36 +11,36 @@ import java.util.List;
 @Component
 public class TunnelQueryHandler {
 
-    private final TunnelViewRepository tunnelRepo;
-    private final TunnelTargetViewRepository targetRepo;
-    private final TunnelSessionViewRepository sessionRepo;
+    private final TunnelEntityRepository tunnelRepo;
+    private final TunnelTargetEntityRepository targetRepo;
+    private final TunnelSessionEntityRepository sessionRepo;
 
-    public TunnelQueryHandler(TunnelViewRepository tunnelRepo,
-                              TunnelTargetViewRepository targetRepo,
-                              TunnelSessionViewRepository sessionRepo) {
+    public TunnelQueryHandler(TunnelEntityRepository tunnelRepo,
+                              TunnelTargetEntityRepository targetRepo,
+                              TunnelSessionEntityRepository sessionRepo) {
         this.tunnelRepo = tunnelRepo;
         this.targetRepo = targetRepo;
         this.sessionRepo = sessionRepo;
     }
 
     @QueryHandler
-    public TunnelView handle(FindTunnelByIdQuery q) {
+    public TunnelEntity handle(FindTunnelByIdQuery q) {
         return tunnelRepo.findById(q.tunnelId())
             .orElseThrow(() -> new RuntimeException("Tunnel not found"));
     }
 
     @QueryHandler
-    public List<TunnelView> handle(FindTunnelsByUserQuery q) {
+    public List<TunnelEntity> handle(FindTunnelsByUserQuery q) {
         return tunnelRepo.findByUserId(q.userId());
     }
 
     @QueryHandler
-    public List<TunnelTargetView> handle(FindTargetsByTunnelQuery q) {
+    public List<TunnelTargetEntity> handle(FindTargetsByTunnelQuery q) {
         return targetRepo.findByTunnelId(q.tunnelId());
     }
 
     @QueryHandler
-    public List<TunnelSessionView> handle(FindSessionsByTunnelQuery q) {
+    public List<TunnelSessionEntity> handle(FindSessionsByTunnelQuery q) {
         return sessionRepo.findByTunnelId(q.tunnelId());
     }
 }

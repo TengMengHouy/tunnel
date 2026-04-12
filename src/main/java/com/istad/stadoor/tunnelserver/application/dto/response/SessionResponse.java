@@ -1,6 +1,6 @@
 package com.istad.stadoor.tunnelserver.application.dto.response;
 
-import com.istad.stadoor.tunnelserver.query.tunnel.model.TunnelSessionView;
+import com.istad.stadoor.tunnelserver.query.tunnel.model.TunnelSessionEntity;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -12,7 +12,7 @@ public record SessionResponse(
     LocalDateTime connectedAt,
     LocalDateTime disconnectedAt
 ) {
-    public static SessionResponse from(TunnelSessionView v) {
+    public static SessionResponse from(TunnelSessionEntity v) {
         return new SessionResponse(
             v.getId(),
             v.getTunnelId(),

@@ -41,7 +41,7 @@ public class TunnelApplicationService {
     public CompletableFuture<TargetResponse> addTarget(UUID tunnelId, AddTargetRequest req) {
         return queryGateway.query(
                         new FindTunnelByIdQuery(tunnelId),
-                        ResponseTypes.instanceOf(TunnelView.class)
+                        ResponseTypes.instanceOf(TunnelEntity.class)
                 )
                 .thenCompose(tunnelView -> {
                     UUID targetId = UUID.randomUUID();
@@ -86,28 +86,28 @@ public class TunnelApplicationService {
     public CompletableFuture<TunnelResponse> findTunnel(UUID tunnelId) {
         return queryGateway.query(
             new FindTunnelByIdQuery(tunnelId),
-            ResponseTypes.instanceOf(TunnelView.class)
+            ResponseTypes.instanceOf(TunnelEntity.class)
         ).thenApply(TunnelResponse::from);
     }
 
     public CompletableFuture<List<TunnelResponse>> findTunnelsByUser(UUID userId) {
         return queryGateway.query(
             new FindTunnelsByUserQuery(userId),
-            ResponseTypes.multipleInstancesOf(TunnelView.class)
+            ResponseTypes.multipleInstancesOf(TunnelEntity.class)
         ).thenApply(list -> list.stream().map(TunnelResponse::from).toList());
     }
 
     public CompletableFuture<List<TargetResponse>> findTargets(UUID tunnelId) {
         return queryGateway.query(
             new FindTargetsByTunnelQuery(tunnelId),
-            ResponseTypes.multipleInstancesOf(TunnelTargetView.class)
+            ResponseTypes.multipleInstancesOf(TunnelTargetEntity.class)
         ).thenApply(list -> list.stream().map(TargetResponse::from).toList());
     }
 
     public CompletableFuture<List<SessionResponse>> findSessions(UUID tunnelId) {
         return queryGateway.query(
             new FindSessionsByTunnelQuery(tunnelId),
-            ResponseTypes.multipleInstancesOf(TunnelSessionView.class)
+            ResponseTypes.multipleInstancesOf(TunnelSessionEntity.class)
         ).thenApply(list -> list.stream().map(SessionResponse::from).toList());
     }
 }
