@@ -2,6 +2,9 @@ server:
   port: ${PORT:8080}
 
 spring:
+  mvc:
+    async:
+      request-timeout: 30000
   application:
     name: tunnel-server
   datasource:
@@ -53,3 +56,7 @@ axon:
     general: jackson
     events: jackson
     messages: jackson
+logging:
+  level:
+    org.springframework.web.socket: DEBUG
+    org.springframework.web: DEBUG
