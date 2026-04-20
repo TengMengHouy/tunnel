@@ -45,29 +45,37 @@ public class ProxyService {
                     log.info(">>> [PROXY] key={} | ip={} | port={}",
                             key, target.ipAddress(), target.localPort());
 
-                    // Find agent WebSocket session by IP
+                    // ✅ Find agent WebSocket session by IP
+                    // with fallback to first available
                     WebSocketSession session = registry
                             .getSessionByIp(target.ipAddress())
-                            .orElseThrow(() -> new RuntimeException(
-                                    "Agent not connected: " + target.ipAddress()
-                            ));
+                            .orElseGet(() -> {
+                                log.warn("⚠️ No session for ip={}, trying first available",
+                                        target.ipAddress());
+                                return registry.getFirstAvailableSession()
+                                        .orElseThrow(() -> new RuntimeException(
+                                                "No agent connected"
+                                        ));
+                            });
 
                     String requestId = UUID.randomUUID().toString();
                     String method    = request.getMethod();
-
-                    // ✅ Extract real path after /proxy/{key}
-                    // /proxy/abc123/api/users -> /api/users
                     String fullUri   = request.getRequestURI();
-                    String path      = extractPath(fullUri);
-                    String body      = readBody(request);
 
-                    log.info(">>> [PROXY] Forwarding: {} {}", method, path);
+                    // ✅ Extract path - handle both formats:
+                    // /proxy/{key}/path    -> /path
+                    // /{basePath}/{key}/path -> /path
+                    String path = extractPath(fullUri, key);
+                    String body = readBody(request);
+
+                    log.info(">>> [PROXY] {} {} -> port:{}",
+                            method, path, target.localPort());
 
                     // Register pending future
                     CompletableFuture<String> future = new CompletableFuture<>();
                     pending.put(requestId, future);
 
-                    // Build payload to send to agent
+                    // Build payload
                     Map<String, Object> payload = new LinkedHashMap<>();
                     payload.put("method",    method);
                     payload.put("path",      path);
@@ -81,13 +89,13 @@ public class ProxyService {
                                         new WsMessage("http_request", requestId, payload)
                                 )
                         ));
-                        log.info("✓ [PROXY] Sent http_request: requestId={}", requestId);
+                        log.info("✓ [PROXY] Sent: requestId={}", requestId);
                     } catch (Exception e) {
                         pending.remove(requestId);
                         return CompletableFuture.failedFuture(e);
                     }
 
-                    // Wait for agent response max 30s
+                    // Wait for agent response (30s timeout)
                     return future
                             .orTimeout(30, TimeUnit.SECONDS)
                             .thenApply(ResponseEntity::ok)
@@ -100,7 +108,7 @@ public class ProxyService {
                 });
     }
 
-    // Called by AgentWebSocketHandler when agent sends "http_response"
+    // ── Complete Response from Agent ──────────────────────────────
     public void completeResponse(String requestId, String body) {
         CompletableFuture<String> future = pending.get(requestId);
         if (future != null) {
@@ -111,15 +119,23 @@ public class ProxyService {
         }
     }
 
-    // ✅ Extract path after /proxy/{key}
-    // Example: /proxy/abc123/api/users -> /api/users
-    private String extractPath(String uri) {
-        // Split: ["", "proxy", "abc123", "api/users"]
-        String[] parts = uri.split("/", 4);
-        return parts.length >= 4 ? "/" + parts[3] : "/";
+    // ── Extract Path ──────────────────────────────────────────────
+    // Handles both:
+    // /proxy/002c0b04/client/jph/users  -> /client/jph/users
+    // /houy/002c0b04/client/jph/users   -> /client/jph/users
+    private String extractPath(String uri, String key) {
+        // Find key position in URI
+        int keyIndex = uri.indexOf(key);
+        if (keyIndex == -1) return "/";
+
+        // Get everything after the key
+        String afterKey = uri.substring(keyIndex + key.length());
+
+        // Make sure it starts with /
+        return afterKey.isEmpty() ? "/" : afterKey;
     }
 
-    // Read request body
+    // ── Read Request Body ─────────────────────────────────────────
     private String readBody(HttpServletRequest request) {
         try (BufferedReader reader = request.getReader()) {
             StringBuilder sb = new StringBuilder();
