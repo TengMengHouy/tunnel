@@ -4,6 +4,7 @@ import com.istad.stadoor.tunnelserver.application.dto.request.CreateTunnelReques
 import com.istad.stadoor.tunnelserver.application.service.AuthApplicationService;
 import com.istad.stadoor.tunnelserver.application.service.TunnelApplicationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -14,6 +15,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Component
+@RequiredArgsConstructor
 public class AgentWebSocketHandler extends TextWebSocketHandler {
 
     private static final Logger log = LoggerFactory.getLogger(AgentWebSocketHandler.class);
@@ -23,15 +25,7 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
     private final TunnelApplicationService tunnelService;
     private final ObjectMapper mapper;
 
-    public AgentWebSocketHandler(AgentSessionRegistry registry,
-                                 AuthApplicationService authService,
-                                 TunnelApplicationService tunnelService,
-                                 ObjectMapper mapper) {
-        this.registry = registry;
-        this.authService = authService;
-        this.tunnelService = tunnelService;
-        this.mapper = mapper;
-    }
+
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
