@@ -35,7 +35,6 @@ public class ProxyService {
         this.mapper        = mapper;
     }
 
-    // ── Forward to Agent ─────────────────────────────────────────
     public CompletableFuture<ResponseEntity<String>> forward(
             String             key,
             HttpServletRequest request
@@ -55,14 +54,20 @@ public class ProxyService {
 
                     String requestId = UUID.randomUUID().toString();
                     String method    = request.getMethod();
-                    String path      = request.getRequestURI();
+
+                    // ✅ Extract real path after /proxy/{key}
+                    // /proxy/abc123/api/users -> /api/users
+                    String fullUri   = request.getRequestURI();
+                    String path      = extractPath(fullUri);
                     String body      = readBody(request);
+
+                    log.info(">>> [PROXY] Forwarding: {} {}", method, path);
 
                     // Register pending future
                     CompletableFuture<String> future = new CompletableFuture<>();
                     pending.put(requestId, future);
 
-                    // Build payload
+                    // Build payload to send to agent
                     Map<String, Object> payload = new LinkedHashMap<>();
                     payload.put("method",    method);
                     payload.put("path",      path);
@@ -76,13 +81,13 @@ public class ProxyService {
                                         new WsMessage("http_request", requestId, payload)
                                 )
                         ));
-                        log.info("✓ [PROXY] http_request sent: requestId={}", requestId);
+                        log.info("✓ [PROXY] Sent http_request: requestId={}", requestId);
                     } catch (Exception e) {
                         pending.remove(requestId);
                         return CompletableFuture.failedFuture(e);
                     }
 
-                    // Wait for agent response (30s timeout)
+                    // Wait for agent response max 30s
                     return future
                             .orTimeout(30, TimeUnit.SECONDS)
                             .thenApply(ResponseEntity::ok)
@@ -95,7 +100,7 @@ public class ProxyService {
                 });
     }
 
-    // ── Complete Response from Agent ─────────────────────────────
+    // Called by AgentWebSocketHandler when agent sends "http_response"
     public void completeResponse(String requestId, String body) {
         CompletableFuture<String> future = pending.get(requestId);
         if (future != null) {
@@ -106,14 +111,25 @@ public class ProxyService {
         }
     }
 
-    // ── Read Body ────────────────────────────────────────────────
+    // ✅ Extract path after /proxy/{key}
+    // Example: /proxy/abc123/api/users -> /api/users
+    private String extractPath(String uri) {
+        // Split: ["", "proxy", "abc123", "api/users"]
+        String[] parts = uri.split("/", 4);
+        return parts.length >= 4 ? "/" + parts[3] : "/";
+    }
+
+    // Read request body
     private String readBody(HttpServletRequest request) {
         try (BufferedReader reader = request.getReader()) {
             StringBuilder sb = new StringBuilder();
             String line;
-            while ((line = reader.readLine()) != null) sb.append(line);
+            while ((line = reader.readLine()) != null) {
+                sb.append(line);
+            }
             return sb.toString();
         } catch (Exception e) {
+            log.warn("Failed to read body");
             return "";
         }
     }

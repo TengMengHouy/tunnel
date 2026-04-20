@@ -16,26 +16,13 @@ public class ProxyController {
 
     private final ProxyService proxyService;
 
-    @RequestMapping("/{basePath}/{key}/**")
+    // ✅ Change from /{basePath}/{key}/** to /proxy/{key}/**
+    @RequestMapping("/proxy/{key}/**")
     public CompletableFuture<ResponseEntity<String>> proxy(
-            @PathVariable String basePath,
             @PathVariable String key,
             HttpServletRequest request
     ) {
-        String uri = request.getRequestURI();
-
-        // ✅ Exclude system paths
-        if (uri.startsWith("/ws") ||
-                uri.startsWith("/api") ||
-                uri.startsWith("/actuator")) {
-            return CompletableFuture.completedFuture(
-                    ResponseEntity.notFound().build()
-            );
-        }
-
-        log.info(">>> [PROXY] {} /{}/{}",
-                request.getMethod(), basePath, key);
-
+        log.info(">>> [PROXY] {} /proxy/{}", request.getMethod(), key);
         return proxyService.forward(key, request);
     }
 }
