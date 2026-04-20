@@ -7,7 +7,11 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-public interface TunnelTargetEntityRepository extends JpaRepository<TunnelTargetEntity, UUID> {
+public interface TunnelTargetEntityRepository
+        extends JpaRepository<TunnelTargetEntity, UUID> {
+
     List<TunnelTargetEntity> findByTunnelId(UUID tunnelId);
+
+    // 👇 NEW
     Optional<TunnelTargetEntity> findByKey(String key);
 }

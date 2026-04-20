@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 public class AgentSessionRegistry {
+    private final Map<String, UUID>           ipToClientId        = new ConcurrentHashMap<>();
 
     private final Map<UUID, WebSocketSession> sessions = new ConcurrentHashMap<>();
     private final Map<UUID, ConnectedClient> clients = new ConcurrentHashMap<>();
@@ -37,7 +38,13 @@ public class AgentSessionRegistry {
     public Optional<ConnectedClient> getClient(String clientId) {
         return Optional.ofNullable(clients.get(clientId));
     }
-
+    public Optional<WebSocketSession> getSessionByIp(String ipAddress) {
+        UUID clientId = ipToClientId.get(ipAddress);
+        if (clientId == null) {
+            return Optional.empty();
+        }
+        return getSession(String.valueOf(clientId));
+    }
     public Optional<ConnectedClient> getClientBySession(WebSocketSession session) {
         UUID clientId = sessionIdToClientId.get(session.getId());
         return clientId == null ? Optional.empty() : Optional.ofNullable(clients.get(clientId));

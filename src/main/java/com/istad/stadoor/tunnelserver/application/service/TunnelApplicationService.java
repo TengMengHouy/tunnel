@@ -5,109 +5,148 @@ import com.istad.stadoor.tunnelserver.application.dto.response.*;
 import com.istad.stadoor.tunnelserver.domain.tunnel.command.*;
 import com.istad.stadoor.tunnelserver.query.tunnel.model.*;
 import com.istad.stadoor.tunnelserver.query.tunnel.query.*;
+import lombok.extern.slf4j.Slf4j;
 import org.axonframework.commandhandling.gateway.CommandGateway;
 import org.axonframework.messaging.responsetypes.ResponseTypes;
 import org.axonframework.queryhandling.QueryGateway;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
+@Slf4j
 @Service
 public class TunnelApplicationService {
 
     private final CommandGateway commandGateway;
-    private final QueryGateway queryGateway;
+    private final QueryGateway   queryGateway;
 
-    public TunnelApplicationService(CommandGateway commandGateway, QueryGateway queryGateway) {
+    public TunnelApplicationService(
+            CommandGateway commandGateway,
+            QueryGateway   queryGateway
+    ) {
         this.commandGateway = commandGateway;
-        this.queryGateway = queryGateway;
+        this.queryGateway   = queryGateway;
     }
 
-    public CompletableFuture<UUID> createTunnel(CreateTunnelRequest req) {
+    // ── Create Tunnel ────────────────────────────────────────────
+    public CompletableFuture<UUID> createTunnel(CreateTunnelRequest request) {
         UUID tunnelId = UUID.randomUUID();
-        return commandGateway.send(new CreateTunnelCommand(
-                        tunnelId,
-                        req.userId(),
-                        req.basePath()
-                ))
-                .thenApply(result -> tunnelId);
+        return commandGateway.<Object>send(new CreateTunnelCommand(
+                tunnelId,
+                request.userId(),
+                request.basePath()
+        )).thenApply(r -> tunnelId);
     }
+
+    // ── Deactivate Tunnel ────────────────────────────────────────
     public CompletableFuture<Void> deactivateTunnel(UUID tunnelId) {
-        return commandGateway.send(new DeactivateTunnelCommand(tunnelId));
+        return commandGateway.<Object>send(
+                new DeactivateTunnelCommand(tunnelId)
+        ).thenApply(r -> null);
     }
 
-    public CompletableFuture<TargetResponse> addTarget(UUID tunnelId, AddTargetRequest req) {
+    // ── Add Target ───────────────────────────────────────────────
+    public CompletableFuture<TargetResponse> addTarget(
+            UUID             tunnelId,
+            AddTargetRequest request
+    ) {
         return queryGateway.query(
-                        new FindTunnelByIdQuery(tunnelId),
-                        ResponseTypes.instanceOf(TunnelEntity.class)
-                )
-                .thenCompose(tunnelView -> {
-                    UUID targetId = UUID.randomUUID();
-                    String key = UUID.randomUUID().toString().substring(0, 8);
-                    String publicUrl = "https://stadoor.com/" + tunnelView.getBasePath() + "/" + key;
+                new FindTunnelByIdQuery(tunnelId),
+                ResponseTypes.instanceOf(TunnelEntity.class)
+        ).thenCompose(tunnel -> {
 
-                    return commandGateway.send(new AddTunnelTargetCommand(
-                                    tunnelId,
-                                    targetId,
-                                    publicUrl,
-                                    key,
-                                    req.ipAddress(), // using the IP
-                                    req.localPort()
-                            ))
-                            .thenApply(result -> new TargetResponse(
-                                    targetId,
-                                    tunnelId,
-                                    publicUrl,
-                                    key,
-                                    req.ipAddress(),
-                                    req.localPort(),
-                                    java.time.LocalDateTime.now()
-                            ));
-                });
-    }
-    public CompletableFuture<UUID> openSession(UUID tunnelId, OpenSessionRequest req) {
-        UUID sessionId = UUID.randomUUID();
-        UUID connectionId = UUID.randomUUID();
+            UUID   targetId  = UUID.randomUUID();
+            String key       = UUID.randomUUID().toString().substring(0, 8);
+            String publicUrl = "https://stadoor.com/"
+                    + tunnel.getBasePath() + "/" + key;
 
-        return commandGateway.send(new OpenTunnelSessionCommand(
-                        tunnelId,
-                        sessionId,
-                        connectionId
-                ))
-                .thenApply(result -> sessionId);
+            return commandGateway.<Object>send(new AddTunnelTargetCommand(
+                    tunnelId,
+                    targetId,
+                    publicUrl,
+                    key,
+                    request.ipAddress(),
+                    request.localPort()
+            )).thenApply(r -> new TargetResponse(
+                    targetId,
+                    tunnelId,
+                    publicUrl,
+                    key,
+                    request.ipAddress(),
+                    request.localPort(),
+                    LocalDateTime.now()
+            ));
+        });
     }
 
-    public CompletableFuture<Void> closeSession(UUID tunnelId, UUID sessionId) {
-        return commandGateway.send(new CloseTunnelSessionCommand(tunnelId, sessionId));
-    }
-
+    // ── Find Tunnel ──────────────────────────────────────────────
     public CompletableFuture<TunnelResponse> findTunnel(UUID tunnelId) {
         return queryGateway.query(
-            new FindTunnelByIdQuery(tunnelId),
-            ResponseTypes.instanceOf(TunnelEntity.class)
-        ).thenApply(TunnelResponse::from);
+                new FindTunnelByIdQuery(tunnelId),
+                ResponseTypes.instanceOf(TunnelEntity.class)
+        ).thenApply(TunnelResponse::from);  // ✅ Use from()
     }
 
+    // ── Find Tunnels By User ─────────────────────────────────────
     public CompletableFuture<List<TunnelResponse>> findTunnelsByUser(UUID userId) {
         return queryGateway.query(
-            new FindTunnelsByUserQuery(userId),
-            ResponseTypes.multipleInstancesOf(TunnelEntity.class)
-        ).thenApply(list -> list.stream().map(TunnelResponse::from).toList());
+                new FindTunnelsByUserQuery(userId),
+                ResponseTypes.multipleInstancesOf(TunnelEntity.class)
+        ).thenApply(list -> list.stream()
+                .map(TunnelResponse::from)  // ✅ Use from()
+                .toList());
     }
 
+    // ── Find Targets ─────────────────────────────────────────────
     public CompletableFuture<List<TargetResponse>> findTargets(UUID tunnelId) {
         return queryGateway.query(
-            new FindTargetsByTunnelQuery(tunnelId),
-            ResponseTypes.multipleInstancesOf(TunnelTargetEntity.class)
-        ).thenApply(list -> list.stream().map(TargetResponse::from).toList());
+                new FindTargetsByTunnelQuery(tunnelId),
+                ResponseTypes.multipleInstancesOf(TunnelTargetEntity.class)
+        ).thenApply(list -> list.stream()
+                .map(TargetResponse::from)  // ✅ Use from()
+                .toList());
     }
 
+    // ── Find Target By Key ───────────────────────────────────────
+    public CompletableFuture<TargetResponse> findTargetByKey(String key) {
+        return queryGateway.query(
+                new FindTargetByKeyQuery(key),
+                ResponseTypes.instanceOf(TunnelTargetEntity.class)
+        ).thenApply(TargetResponse::from);  // ✅ Use from()
+    }
+
+    // ── Open Session ─────────────────────────────────────────────
+    public CompletableFuture<UUID> openSession(
+            UUID               tunnelId,
+            OpenSessionRequest request
+    ) {
+        UUID sessionId    = UUID.randomUUID();
+        UUID connectionId = UUID.randomUUID();
+        return commandGateway.<Object>send(new OpenTunnelSessionCommand(
+                tunnelId,
+                sessionId,
+                connectionId
+        )).thenApply(r -> sessionId);
+    }
+
+    // ── Close Session ────────────────────────────────────────────
+    public CompletableFuture<Void> closeSession(UUID tunnelId, UUID sessionId) {
+        return commandGateway.<Object>send(new CloseTunnelSessionCommand(
+                tunnelId,
+                sessionId
+        )).thenApply(r -> null);
+    }
+
+    // ── Find Sessions ────────────────────────────────────────────
     public CompletableFuture<List<SessionResponse>> findSessions(UUID tunnelId) {
         return queryGateway.query(
-            new FindSessionsByTunnelQuery(tunnelId),
-            ResponseTypes.multipleInstancesOf(TunnelSessionEntity.class)
-        ).thenApply(list -> list.stream().map(SessionResponse::from).toList());
+                new FindSessionsByTunnelQuery(tunnelId),
+                ResponseTypes.multipleInstancesOf(TunnelSessionEntity.class)
+        ).thenApply(list -> list.stream()
+                .map(SessionResponse::from)  // ✅ Use from()
+                .toList());
     }
 }
