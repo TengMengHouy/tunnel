@@ -22,6 +22,17 @@ public class ProxyController {
             @PathVariable String key,
             HttpServletRequest request
     ) {
+        String uri = request.getRequestURI();
+
+        // ✅ Exclude system paths
+        if (uri.startsWith("/ws") ||
+                uri.startsWith("/api") ||
+                uri.startsWith("/actuator")) {
+            return CompletableFuture.completedFuture(
+                    ResponseEntity.notFound().build()
+            );
+        }
+
         log.info(">>> [PROXY] {} /{}/{}",
                 request.getMethod(), basePath, key);
 
