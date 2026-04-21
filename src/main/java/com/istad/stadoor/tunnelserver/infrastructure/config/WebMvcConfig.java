@@ -1,17 +1,18 @@
 package com.istad.stadoor.tunnelserver.infrastructure.config;
 
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.*;
+import jakarta.servlet.http.*;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.web.servlet.HandlerInterceptor;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.context.annotation.*;
+import org.springframework.core.Ordered;
 import org.springframework.web.servlet.config.annotation.*;
 
 @Slf4j
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
 
-    // ✅ CORS for all paths
+    // ✅ CORS
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
@@ -26,35 +27,33 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .maxAge(3600);
     }
 
-    // ✅ Intercept and block /ws/** from ProxyController
-    @Override
-    public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(new HandlerInterceptor() {
-            @Override
-            public boolean preHandle(
-                    HttpServletRequest  request,
-                    HttpServletResponse response,
-                    Object              handler
-            ) throws Exception {
-                String uri     = request.getRequestURI();
-                String upgrade = request.getHeader("Upgrade");
+    // ✅ Filter to block /ws/** BEFORE Spring MVC
+    @Bean
+    public FilterRegistrationBean<Filter> wsFilter() {
+        FilterRegistrationBean<Filter> bean = new FilterRegistrationBean<>();
 
-                // ✅ Block ProxyController from handling WebSocket paths
-                if (uri.startsWith("/ws")) {
-                    log.warn("⚠️ Blocking /ws path from MVC: {}", uri);
-                    response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                    return false;
-                }
+        bean.setFilter((request, response, chain) -> {
+            HttpServletRequest  req  = (HttpServletRequest)  request;
+            HttpServletResponse resp = (HttpServletResponse) response;
 
-                // ✅ Block WebSocket upgrade from ProxyController
-                if ("websocket".equalsIgnoreCase(upgrade)) {
-                    log.warn("⚠️ Blocking WebSocket upgrade from MVC: {}", uri);
-                    response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                    return false;
-                }
+            String uri     = req.getRequestURI();
+            String upgrade = req.getHeader("Upgrade");
 
-                return true;
+            // ✅ Let WebSocket pass through
+            if (uri.startsWith("/ws") ||
+                    "websocket".equalsIgnoreCase(upgrade)) {
+                log.debug("✅ WebSocket path - passing through: {}", uri);
+                chain.doFilter(request, response);
+                return;
             }
-        }).addPathPatterns("/{basePath}/{key}/**");
+
+            chain.doFilter(request, response);
+        });
+
+        bean.addUrlPatterns("/*");
+        bean.setOrder(Ordered.HIGHEST_PRECEDENCE); // ✅ Run first!
+        bean.setName("wsFilter");
+
+        return bean;
     }
 }

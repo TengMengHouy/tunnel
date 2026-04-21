@@ -4,6 +4,7 @@ import com.istad.stadoor.tunnelserver.application.service.ProxyService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -13,13 +14,13 @@ import java.util.concurrent.CompletableFuture;
 @Slf4j
 @RestController
 @RequiredArgsConstructor
+@Order(Integer.MAX_VALUE) // ✅ Lowest priority
 public class ProxyController {
 
     private final ProxyService proxyService;
 
-    // ✅ Paths that should NOT be proxied
     private static final List<String> EXCLUDED = List.of(
-            "/ws",        // ✅ WebSocket - no trailing slash needed!
+            "/ws",
             "/api",
             "/actuator",
             "/error",
@@ -36,26 +37,25 @@ public class ProxyController {
         String upgrade = request.getHeader("Upgrade");
         String method  = request.getMethod();
 
-        // ✅ FIRST - Check excluded paths
+        // ✅ Check excluded FIRST
         boolean excluded = EXCLUDED.stream()
                 .anyMatch(uri::startsWith);
 
         if (excluded) {
-            log.warn("⚠️ Skipping excluded: {}", uri);
+            log.warn("⚠️ Excluded: {}", uri);
             return CompletableFuture.completedFuture(
                     ResponseEntity.notFound().build()
             );
         }
 
-        // ✅ SECOND - Skip WebSocket upgrade
+        // ✅ Check WebSocket
         if ("websocket".equalsIgnoreCase(upgrade)) {
-            log.warn("⚠️ Skipping WebSocket upgrade: {}", uri);
             return CompletableFuture.completedFuture(
                     ResponseEntity.notFound().build()
             );
         }
 
-        // ✅ THIRD - Handle OPTIONS preflight
+        // ✅ Handle OPTIONS
         if ("OPTIONS".equalsIgnoreCase(method)) {
             return CompletableFuture.completedFuture(
                     ResponseEntity.ok()
