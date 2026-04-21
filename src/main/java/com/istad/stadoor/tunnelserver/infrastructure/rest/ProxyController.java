@@ -19,18 +19,26 @@ public class ProxyController {
 
     private final ProxyService proxyService;
 
-    // Exact paths owned by tunnel SERVER
+    // ✅ Exact paths - never proxy these
     private static final Set<String> EXCLUDED_EXACT = Set.of(
-            "/agent-ws", "/error", "/favicon.ico"
+            "/agent-ws",
+            "/error",
+            "/favicon.ico"
     );
 
-    // Prefix paths owned by tunnel SERVER
+    // ✅ Prefix paths - never proxy these
     private static final Set<String> EXCLUDED_PREFIX = Set.of(
-            "/actuator", "/api/tunnels", "/api/auth", "/api/health"
+            "/actuator",
+            "/api/tunnels",
+            "/api/auth",
+            "/api/health",
+            "/ws"
     );
 
-    // ── Route 1: /{basePath}/{key}/** ─────────────────────────────
+    // ─────────────────────────────────────────────────────────────
+    // Route 1: /{basePath}/{key}/**
     // e.g. /api/d721759b/about
+    // ─────────────────────────────────────────────────────────────
     @RequestMapping("/{basePath}/{key}/**")
     public CompletableFuture<ResponseEntity<byte[]>> proxy(
             @PathVariable String basePath,
@@ -39,31 +47,33 @@ public class ProxyController {
 
         String uri = request.getRequestURI();
 
-        if (isExcluded(uri)) {
-            log.warn("⚠️ Excluded: {}", uri);
+        if (isExcluded(uri) || isWebSocketUpgrade(request)) {
+            log.warn("⚠️ Excluded or WS: {}", uri);
             return CompletableFuture.completedFuture(
                     ResponseEntity.notFound().build());
         }
 
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
-            return CompletableFuture.completedFuture(corsResponse());
+            return corsPreFlight();
         }
 
-        log.info(">>> [PROXY] {} | key={} | uri={}", request.getMethod(), key, uri);
+        log.info(">>> [PROXY] {} | key={} | uri={}",
+                request.getMethod(), key, uri);
 
-        // Store key in session for Next.js asset requests
         request.getSession().setAttribute("tunnel_key", key);
-
         return proxyService.forward(key, request);
     }
 
-    // ── Route 2: /_next/** ────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────
+    // Route 2: /_next/**
+    // ─────────────────────────────────────────────────────────────
     @RequestMapping("/_next/**")
     public CompletableFuture<ResponseEntity<byte[]>> nextAssets(
             HttpServletRequest request) {
 
         String key = getKeyFromSession(request);
         if (key == null) {
+            log.warn("⚠️ No session for /_next/: {}", request.getRequestURI());
             return CompletableFuture.completedFuture(
                     ResponseEntity.notFound().build());
         }
@@ -72,15 +82,24 @@ public class ProxyController {
         return proxyService.forwardRaw(key, getFullPath(request), request);
     }
 
-    // ── Route 3: Root static files ────────────────────────────────
-    // e.g. /logo.png /favicon.ico /robots.txt
+    // ─────────────────────────────────────────────────────────────
+    // Route 3: Root static files
+    // e.g. /logo.png /robots.txt
+    // ─────────────────────────────────────────────────────────────
     @RequestMapping("/{file:.+\\.[a-zA-Z0-9]+}")
-    public CompletableFuture<ResponseEntity<byte[]>> rootStaticFile(
+    public CompletableFuture<ResponseEntity<byte[]>> rootStatic(
             @PathVariable String file,
             HttpServletRequest request) {
 
+        // ✅ Never proxy agent-ws even if regex matches
+        if (isExcluded(request.getRequestURI())) {
+            return CompletableFuture.completedFuture(
+                    ResponseEntity.notFound().build());
+        }
+
         String key = getKeyFromSession(request);
         if (key == null) {
+            log.warn("⚠️ No session for static: {}", file);
             return CompletableFuture.completedFuture(
                     ResponseEntity.notFound().build());
         }
@@ -89,8 +108,10 @@ public class ProxyController {
         return proxyService.forwardRaw(key, "/" + file, request);
     }
 
-    // ── Route 4: Sub pages /{page}/** ─────────────────────────────
-    // e.g. /about /contact-us /login
+    // ─────────────────────────────────────────────────────────────
+    // Route 4: Sub pages /{page}/**
+    // e.g. /about /contact-us
+    // ─────────────────────────────────────────────────────────────
     @RequestMapping("/{page}/**")
     public CompletableFuture<ResponseEntity<byte[]>> subPage(
             @PathVariable String page,
@@ -98,14 +119,16 @@ public class ProxyController {
 
         String uri = request.getRequestURI();
 
-        if (isExcluded(uri)) {
+        // ✅ Critical: exclude /agent-ws and other internal paths
+        if (isExcluded(uri) || isWebSocketUpgrade(request)) {
+            log.debug("⚠️ Excluded sub-page: {}", uri);
             return CompletableFuture.completedFuture(
                     ResponseEntity.notFound().build());
         }
 
         String key = getKeyFromSession(request);
         if (key == null) {
-            log.warn("⚠️ No tunnel session for: {}", uri);
+            log.warn("⚠️ No session for sub-page: {}", uri);
             return CompletableFuture.completedFuture(
                     ResponseEntity.status(404).build());
         }
@@ -119,8 +142,14 @@ public class ProxyController {
     // ─────────────────────────────────────────────────────────────
 
     private boolean isExcluded(String uri) {
+        // Check exact match
         if (EXCLUDED_EXACT.contains(uri)) return true;
+        // Check if uri starts with any excluded prefix
         return EXCLUDED_PREFIX.stream().anyMatch(uri::startsWith);
+    }
+
+    private boolean isWebSocketUpgrade(HttpServletRequest request) {
+        return "websocket".equalsIgnoreCase(request.getHeader("Upgrade"));
     }
 
     private String getKeyFromSession(HttpServletRequest request) {
@@ -133,12 +162,14 @@ public class ProxyController {
         return query != null ? uri + "?" + query : uri;
     }
 
-    private ResponseEntity<byte[]> corsResponse() {
-        return ResponseEntity.ok()
-                .header("Access-Control-Allow-Origin", "*")
-                .header("Access-Control-Allow-Methods",
-                        "GET, POST, PUT, DELETE, PATCH, OPTIONS")
-                .header("Access-Control-Allow-Headers", "*")
-                .build();
+    private CompletableFuture<ResponseEntity<byte[]>> corsPreFlight() {
+        return CompletableFuture.completedFuture(
+                ResponseEntity.ok()
+                        .header("Access-Control-Allow-Origin", "*")
+                        .header("Access-Control-Allow-Methods",
+                                "GET, POST, PUT, DELETE, PATCH, OPTIONS")
+                        .header("Access-Control-Allow-Headers", "*")
+                        .build()
+        );
     }
 }
