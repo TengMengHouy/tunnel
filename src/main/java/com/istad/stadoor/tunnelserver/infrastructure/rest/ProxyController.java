@@ -8,7 +8,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 @Slf4j
@@ -19,147 +19,126 @@ public class ProxyController {
 
     private final ProxyService proxyService;
 
-    // ✅ Only exclude actual tunnel server internal paths
-    private static final List<String> EXCLUDED = List.of(
-            "/ws",
-            "/actuator",
-            "/error",
-            "/api/tunnel",
-            "/api/register",
-            "/api/health",
-            "/agent-ws"
+    // Exact paths owned by tunnel SERVER
+    private static final Set<String> EXCLUDED_EXACT = Set.of(
+            "/agent-ws", "/error", "/favicon.ico"
     );
 
-    // ─────────────────────────────────────────────────────────────
-    // Route 1: Main tunnel entry /{basePath}/{key}/**
-    // Example: /api/d721759b, /api/d721759b/about
-    // ─────────────────────────────────────────────────────────────
+    // Prefix paths owned by tunnel SERVER
+    private static final Set<String> EXCLUDED_PREFIX = Set.of(
+            "/actuator", "/api/tunnels", "/api/auth", "/api/health"
+    );
+
+    // ── Route 1: /{basePath}/{key}/** ─────────────────────────────
+    // e.g. /api/d721759b/about
     @RequestMapping("/{basePath}/{key}/**")
-    public CompletableFuture<ResponseEntity<String>> proxy(
+    public CompletableFuture<ResponseEntity<byte[]>> proxy(
             @PathVariable String basePath,
             @PathVariable String key,
-            HttpServletRequest request
-    ) {
-        String uri    = request.getRequestURI();
-        String method = request.getMethod();
+            HttpServletRequest request) {
 
-        // Check excluded
-        boolean isExcluded = EXCLUDED.stream().anyMatch(uri::startsWith);
-        if (isExcluded) {
+        String uri = request.getRequestURI();
+
+        if (isExcluded(uri)) {
             log.warn("⚠️ Excluded: {}", uri);
             return CompletableFuture.completedFuture(
-                    ResponseEntity.notFound().build()
-            );
+                    ResponseEntity.notFound().build());
         }
 
-        // WebSocket upgrade - skip
-        if ("websocket".equalsIgnoreCase(request.getHeader("Upgrade"))) {
-            return CompletableFuture.completedFuture(
-                    ResponseEntity.notFound().build()
-            );
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+            return CompletableFuture.completedFuture(corsResponse());
         }
 
-        // OPTIONS - CORS preflight
-        if ("OPTIONS".equalsIgnoreCase(method)) {
-            return CompletableFuture.completedFuture(
-                    ResponseEntity.ok()
-                            .header("Access-Control-Allow-Origin", "*")
-                            .header("Access-Control-Allow-Methods",
-                                    "GET, POST, PUT, DELETE, PATCH, OPTIONS")
-                            .header("Access-Control-Allow-Headers", "*")
-                            .body("")
-            );
-        }
+        log.info(">>> [PROXY] {} | key={} | uri={}", request.getMethod(), key, uri);
 
-        log.info(">>> [PROXY] {} | ClientID={} | URI={}", method, key, uri);
-
-        // ✅ Store key in session for asset requests
-        request.getSession().setAttribute("tunnel_client_key", key);
+        // Store key in session for Next.js asset requests
+        request.getSession().setAttribute("tunnel_key", key);
 
         return proxyService.forward(key, request);
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Route 2: Next.js internal assets /_next/**
-    // Example: /_next/static/chunks/main.js
-    //          /_next/image?url=%2Fimage.png
-    // ─────────────────────────────────────────────────────────────
+    // ── Route 2: /_next/** ────────────────────────────────────────
     @RequestMapping("/_next/**")
-    public CompletableFuture<ResponseEntity<String>> proxyNextAssets(
-            HttpServletRequest request
-    ) {
-        String uri    = request.getRequestURI();
-        String method = request.getMethod();
+    public CompletableFuture<ResponseEntity<byte[]>> nextAssets(
+            HttpServletRequest request) {
 
-        String key = (String) request.getSession().getAttribute("tunnel_client_key");
-
+        String key = getKeyFromSession(request);
         if (key == null) {
-            log.warn("⚠️ No tunnel session for /_next/ | uri={}", uri);
             return CompletableFuture.completedFuture(
-                    ResponseEntity.status(404)
-                            .body("No active tunnel session for Next.js assets")
-            );
+                    ResponseEntity.notFound().build());
         }
 
-        log.info(">>> [NEXT] {} {} | key={}", method, uri, key);
-        return proxyService.forwardRaw(key, uri, request);
+        log.info(">>> [NEXT] {} | key={}", request.getRequestURI(), key);
+        return proxyService.forwardRaw(key, getFullPath(request), request);
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Route 3: Root-level static files
-    // Example: /RTR-LOGO.png, /favicon.ico, /image.png
-    // ─────────────────────────────────────────────────────────────
-    @RequestMapping("/{filename:.+\\.[a-zA-Z0-9]+}")
-    public CompletableFuture<ResponseEntity<String>> proxyRootStaticFile(
-            @PathVariable String filename,
-            HttpServletRequest request
-    ) {
-        String uri = request.getRequestURI();
+    // ── Route 3: Root static files ────────────────────────────────
+    // e.g. /logo.png /favicon.ico /robots.txt
+    @RequestMapping("/{file:.+\\.[a-zA-Z0-9]+}")
+    public CompletableFuture<ResponseEntity<byte[]>> rootStaticFile(
+            @PathVariable String file,
+            HttpServletRequest request) {
 
-        String key = (String) request.getSession().getAttribute("tunnel_client_key");
-
+        String key = getKeyFromSession(request);
         if (key == null) {
-            log.warn("⚠️ No tunnel session for static file: {}", filename);
             return CompletableFuture.completedFuture(
-                    ResponseEntity.notFound().build()
-            );
+                    ResponseEntity.notFound().build());
         }
 
-        log.info(">>> [STATIC] {} | key={}", uri, key);
-        return proxyService.forwardRaw(key, uri, request);
+        log.info(">>> [STATIC] {} | key={}", file, key);
+        return proxyService.forwardRaw(key, "/" + file, request);
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Route 4: Sub-page routes without key in path
-    // Example: /contact-us/, /about, /login
-    // These come from Next.js navigation after initial page load
-    // ─────────────────────────────────────────────────────────────
+    // ── Route 4: Sub pages /{page}/** ─────────────────────────────
+    // e.g. /about /contact-us /login
     @RequestMapping("/{page}/**")
-    public CompletableFuture<ResponseEntity<String>> proxySubPage(
+    public CompletableFuture<ResponseEntity<byte[]>> subPage(
             @PathVariable String page,
-            HttpServletRequest request
-    ) {
+            HttpServletRequest request) {
+
         String uri = request.getRequestURI();
 
-        // Skip excluded
-        boolean isExcluded = EXCLUDED.stream().anyMatch(uri::startsWith);
-        if (isExcluded) {
+        if (isExcluded(uri)) {
             return CompletableFuture.completedFuture(
-                    ResponseEntity.notFound().build()
-            );
+                    ResponseEntity.notFound().build());
         }
 
-        String key = (String) request.getSession().getAttribute("tunnel_client_key");
-
+        String key = getKeyFromSession(request);
         if (key == null) {
-            log.warn("⚠️ No tunnel session for sub-page: {}", uri);
+            log.warn("⚠️ No tunnel session for: {}", uri);
             return CompletableFuture.completedFuture(
-                    ResponseEntity.status(404)
-                            .body("No active tunnel session")
-            );
+                    ResponseEntity.status(404).build());
         }
 
         log.info(">>> [SUB-PAGE] {} | key={}", uri, key);
-        return proxyService.forwardRaw(key, uri, request);
+        return proxyService.forwardRaw(key, getFullPath(request), request);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Helpers
+    // ─────────────────────────────────────────────────────────────
+
+    private boolean isExcluded(String uri) {
+        if (EXCLUDED_EXACT.contains(uri)) return true;
+        return EXCLUDED_PREFIX.stream().anyMatch(uri::startsWith);
+    }
+
+    private String getKeyFromSession(HttpServletRequest request) {
+        return (String) request.getSession().getAttribute("tunnel_key");
+    }
+
+    private String getFullPath(HttpServletRequest request) {
+        String uri = request.getRequestURI();
+        String query = request.getQueryString();
+        return query != null ? uri + "?" + query : uri;
+    }
+
+    private ResponseEntity<byte[]> corsResponse() {
+        return ResponseEntity.ok()
+                .header("Access-Control-Allow-Origin", "*")
+                .header("Access-Control-Allow-Methods",
+                        "GET, POST, PUT, DELETE, PATCH, OPTIONS")
+                .header("Access-Control-Allow-Headers", "*")
+                .build();
     }
 }
