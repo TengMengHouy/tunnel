@@ -28,101 +28,141 @@ public class ProxyService {
     private final Map<String, CompletableFuture<String>> pending = new ConcurrentHashMap<>();
 
     /**
-     * Forward HTTP request from tunnel server to the connected agent (client)
+     * Forward HTTP request from tunnel server to the connected agent
      */
-    public CompletableFuture<ResponseEntity<String>> forward(String key, HttpServletRequest request) {
+    public CompletableFuture<ResponseEntity<String>> forward(
+            String key,
+            HttpServletRequest request
+    ) {
         String requestId = UUID.randomUUID().toString();
 
         return tunnelService.findTargetByKey(key)
                 .thenCompose(target -> {
 
+                    // ── Guard: No target found ──────────────────
                     if (target == null) {
-                        log.error("❌ No target found for key: {}", key);
+                        log.error("❌ No target found for key={}", key);
                         return CompletableFuture.completedFuture(
                                 ResponseEntity.status(404)
-                                        .body("No tunnel target registered for key: " + key)
+                                        .body("No tunnel target found for key: " + key)
                         );
                     }
 
-                    log.info(">>> [PROXY] key={} | targetIp={} | localPort={}",
+                    log.info(">>> [PROXY] key={} | ip={} | port={}",
                             key, target.ipAddress(), target.localPort());
 
-                    // Get WebSocket session for this target
-                    WebSocketSession session = registry.getSessionByIp(target.ipAddress())
-                            .or(() -> registry.getFirstAvailableSession())
-                            .orElseThrow(() -> new RuntimeException("No active agent connected"));
+                    // ── Guard: No agent session ─────────────────
+                    Optional<WebSocketSession> sessionOpt = registry
+                            .getSessionByIp(target.ipAddress())
+                            .or(() -> registry.getFirstAvailableSession());
+
+                    if (sessionOpt.isEmpty()) {
+                        log.error("❌ No active agent session for ip={}", target.ipAddress());
+                        return CompletableFuture.completedFuture(
+                                ResponseEntity.status(503)
+                                        .body("No active tunnel agent for: " + target.ipAddress())
+                        );
+                    }
+
+                    WebSocketSession session = sessionOpt.get();
+
+                    // ── Guard: Session not open ─────────────────
+                    if (!session.isOpen()) {
+                        log.error("❌ Agent session is closed for ip={}", target.ipAddress());
+                        return CompletableFuture.completedFuture(
+                                ResponseEntity.status(503)
+                                        .body("Tunnel agent session is closed")
+                        );
+                    }
 
                     String method = request.getMethod();
-                    String path = extractPath(request.getRequestURI(), key);
-                    String body = readBody(request);
+                    String path   = extractPath(request.getRequestURI(), key);
+                    String body   = readBody(request);
 
-                    log.info(">>> [PROXY] Forwarding {} {} -> localPort:{}", method, path, target.localPort());
+                    log.info(">>> [PROXY] {} {} -> port:{}", method, path, target.localPort());
 
+                    // Register pending future
                     CompletableFuture<String> responseFuture = new CompletableFuture<>();
                     pending.put(requestId, responseFuture);
 
-                    // Prepare payload for agent
+                    // Build payload to send to agent
                     Map<String, Object> payload = new LinkedHashMap<>();
-                    payload.put("method", method);
-                    payload.put("path", path);
+                    payload.put("method",    method);
+                    payload.put("path",      path);
                     payload.put("localPort", target.localPort());
-                    payload.put("headers", extractHeaders(request));
-                    payload.put("body", body.isEmpty() ? null : body);
+                    payload.put("headers",   extractHeaders(request));
+                    payload.put("body",      body.isEmpty() ? null : body);
 
                     // Send request to agent via WebSocket
                     try {
                         String message = mapper.writeValueAsString(
                                 new WsMessage("http_request", requestId, payload)
                         );
+
+                        // ✅ Check message size before sending
+                        log.debug(">>> [PROXY] Message size: {} bytes", message.length());
+
                         session.sendMessage(new TextMessage(message));
-                        log.info("✓ Request sent to agent | requestId={}", requestId);
+                        log.info("✓ Sent http_request to agent | requestId={}", requestId);
+
                     } catch (Exception e) {
                         pending.remove(requestId);
-                        log.error("Failed to send message to agent", e);
+                        log.error("❌ Failed to send message to agent: {}", e.getMessage());
                         return CompletableFuture.failedFuture(e);
                     }
 
-                    // Wait for response from agent
+                    // Wait for agent response
                     return responseFuture
                             .orTimeout(25, TimeUnit.SECONDS)
-                            .thenApply(this::buildResponseEntity)
+                            .thenApply(responseBody -> buildResponseEntity(responseBody))
                             .whenComplete((result, throwable) -> {
                                 pending.remove(requestId);
                                 if (throwable != null) {
-                                    log.error("❌ [PROXY] Failed for requestId={}: {}", requestId, throwable.toString());
+                                    log.error("❌ [PROXY] requestId={} | error={}",
+                                            requestId, throwable.getMessage());
                                 } else {
-                                    log.info("✓ [PROXY] Response completed for requestId={}", requestId);
+                                    log.info("✓ [PROXY] requestId={} completed", requestId);
                                 }
                             });
                 })
                 .exceptionally(ex -> {
-                    log.error("❌ Proxy exception for key={}: {}", key, ex.getMessage(), ex);
+                    Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
+                    log.error("❌ Proxy error for key={}: {}", key, cause.getMessage());
+
+                    if (cause instanceof TimeoutException) {
+                        return ResponseEntity.status(504)
+                                .body("Gateway Timeout: Agent did not respond in time");
+                    }
+
                     return ResponseEntity.status(502)
-                            .body("Bad Gateway: " + ex.getMessage());
+                            .body("Bad Gateway: " + cause.getMessage());
                 });
     }
 
     /**
-     * Called by WebSocket handler when agent sends back the response
+     * Called by WebSocketHandler when agent sends back response
      */
     public void completeResponse(String requestId, String body) {
         CompletableFuture<String> future = pending.remove(requestId);
         if (future != null) {
             future.complete(body != null ? body : "");
-            log.info("✓ Response completed for requestId={}", requestId);
+            log.info("✓ Response completed | requestId={}", requestId);
         } else {
-            log.warn("⚠️ No pending request found for requestId={}", requestId);
+            log.warn("⚠️ No pending request found | requestId={}", requestId);
         }
     }
 
+    // ─────────────────────────────────────────────────────────────
+    //  Helpers
+    // ─────────────────────────────────────────────────────────────
+
     /**
-     * Build Spring ResponseEntity with proper content type and CORS headers
+     * Build ResponseEntity with CORS headers and correct Content-Type
      */
     private ResponseEntity<String> buildResponseEntity(String body) {
         String contentType = detectContentType(body);
-
         return ResponseEntity.ok()
-                .header("Access-Control-Allow-Origin", "*")
+                .header("Access-Control-Allow-Origin",  "*")
                 .header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS")
                 .header("Access-Control-Allow-Headers", "*")
                 .header("Content-Type", contentType)
@@ -130,41 +170,51 @@ public class ProxyService {
     }
 
     /**
-     * Extract path after the key (clientId)
-     * Example: /api/d721759b/users/profile → /users/profile
+     * Extract path after key segment
+     * /api/d721759b/users/profile → /users/profile
+     * /api/d721759b               → /
      */
     private String extractPath(String uri, String key) {
         int index = uri.indexOf(key);
         if (index == -1) return "/";
-
         String afterKey = uri.substring(index + key.length());
-        return afterKey.isEmpty() || afterKey.equals("/") ? "/" : afterKey;
+        return afterKey.isEmpty() ? "/" : afterKey;
     }
 
     /**
-     * Extract all headers from request
+     * Extract headers from request (skip problematic ones)
      */
     private Map<String, String> extractHeaders(HttpServletRequest request) {
-        Map<String, String> headers = new HashMap<>();
+        Map<String, String> headers = new LinkedHashMap<>();
         Enumeration<String> names = request.getHeaderNames();
+
+        // Skip headers that should not be forwarded
+        Set<String> skipHeaders = Set.of(
+                "host", "connection", "transfer-encoding", "upgrade"
+        );
+
         while (names.hasMoreElements()) {
             String name = names.nextElement();
-            headers.put(name, request.getHeader(name));
+            if (!skipHeaders.contains(name.toLowerCase())) {
+                headers.put(name, request.getHeader(name));
+            }
         }
         return headers;
     }
 
     /**
-     * Auto detect content type for response
+     * Auto detect content type from response body
      */
     private String detectContentType(String body) {
         if (body == null || body.isBlank()) return "text/plain";
-
         String trimmed = body.trim();
+
         if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
             return "application/json";
-        } else if (trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<html") ||
-                trimmed.startsWith("<HTML") || trimmed.startsWith("<head")) {
+        } else if (trimmed.startsWith("<!DOCTYPE") ||
+                trimmed.startsWith("<html")     ||
+                trimmed.startsWith("<HTML")     ||
+                trimmed.startsWith("<head")) {
             return "text/html; charset=utf-8";
         } else if (trimmed.startsWith("<")) {
             return "text/xml";
@@ -173,7 +223,7 @@ public class ProxyService {
     }
 
     /**
-     * Read request body
+     * Read request body safely
      */
     private String readBody(HttpServletRequest request) {
         try (BufferedReader reader = request.getReader()) {
@@ -184,7 +234,7 @@ public class ProxyService {
             }
             return sb.toString();
         } catch (Exception e) {
-            log.warn("Failed to read request body", e);
+            log.warn("Failed to read request body: {}", e.getMessage());
             return "";
         }
     }
