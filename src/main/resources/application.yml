@@ -6,7 +6,7 @@ server:
 
 spring:
   main:
-    allow-bean-definition-overriding: false
+    allow-bean-definition-overriding: true  # ← Important
   mvc:
     async:
       request-timeout: 35000
@@ -60,4 +60,5 @@ logging:
   level:
     root: INFO
     org.springframework.web.socket: DEBUG
+    org.springframework.web.servlet: DEBUG
     com.istad.stadoor: DEBUG

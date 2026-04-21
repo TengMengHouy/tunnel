@@ -108,10 +108,7 @@ public class ProxyController {
         return proxyService.forwardRaw(key, "/" + file, request);
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Route 4: Sub pages /{page}/**
-    // e.g. /about /contact-us
-    // ─────────────────────────────────────────────────────────────
+    // ── Route 4: Sub pages /{page}/** ─────────────────────────────
     @RequestMapping("/{page}/**")
     public CompletableFuture<ResponseEntity<byte[]>> subPage(
             @PathVariable String page,
@@ -119,16 +116,22 @@ public class ProxyController {
 
         String uri = request.getRequestURI();
 
-        // ✅ Critical: exclude /agent-ws and other internal paths
+        // ✅ Hard block for agent-ws
+        if (uri.startsWith("/agent-ws")) {
+            log.debug("🚫 Blocked proxy for /agent-ws");
+            return CompletableFuture.completedFuture(
+                    ResponseEntity.notFound().build());
+        }
+
         if (isExcluded(uri) || isWebSocketUpgrade(request)) {
-            log.debug("⚠️ Excluded sub-page: {}", uri);
+            log.debug("⚠️ Excluded: {}", uri);
             return CompletableFuture.completedFuture(
                     ResponseEntity.notFound().build());
         }
 
         String key = getKeyFromSession(request);
         if (key == null) {
-            log.warn("⚠️ No session for sub-page: {}", uri);
+            log.warn("⚠️ No session for: {}", uri);
             return CompletableFuture.completedFuture(
                     ResponseEntity.status(404).build());
         }
