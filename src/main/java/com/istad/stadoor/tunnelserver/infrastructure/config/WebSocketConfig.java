@@ -2,7 +2,6 @@ package com.istad.stadoor.tunnelserver.infrastructure.config;
 
 import com.istad.stadoor.tunnelserver.infrastructure.websocket.AgentWebSocketHandler;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.Ordered;
 import org.springframework.web.socket.config.annotation.*;
 
 @Configuration
@@ -19,5 +18,10 @@ public class WebSocketConfig implements WebSocketConfigurer {
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(handler, "/ws/agent")
                 .setAllowedOrigins("*");
+
+        // ✅ Also add SockJS fallback
+        registry.addHandler(handler, "/ws/agent-sockjs")
+                .setAllowedOrigins("*")
+                .withSockJS();
     }
 }

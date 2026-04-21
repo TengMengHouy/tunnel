@@ -19,9 +19,9 @@ public class ProxyController {
 
     // ✅ Paths that should NOT be proxied
     private static final List<String> EXCLUDED = List.of(
-            "/ws/",
-            "/api/",
-            "/actuator/",
+            "/ws",        // ✅ WebSocket - no trailing slash needed!
+            "/api",
+            "/actuator",
             "/error",
             "/favicon.ico"
     );
@@ -36,7 +36,26 @@ public class ProxyController {
         String upgrade = request.getHeader("Upgrade");
         String method  = request.getMethod();
 
-        // ✅ Handle OPTIONS preflight for CORS
+        // ✅ FIRST - Check excluded paths
+        boolean excluded = EXCLUDED.stream()
+                .anyMatch(uri::startsWith);
+
+        if (excluded) {
+            log.warn("⚠️ Skipping excluded: {}", uri);
+            return CompletableFuture.completedFuture(
+                    ResponseEntity.notFound().build()
+            );
+        }
+
+        // ✅ SECOND - Skip WebSocket upgrade
+        if ("websocket".equalsIgnoreCase(upgrade)) {
+            log.warn("⚠️ Skipping WebSocket upgrade: {}", uri);
+            return CompletableFuture.completedFuture(
+                    ResponseEntity.notFound().build()
+            );
+        }
+
+        // ✅ THIRD - Handle OPTIONS preflight
         if ("OPTIONS".equalsIgnoreCase(method)) {
             return CompletableFuture.completedFuture(
                     ResponseEntity.ok()
@@ -45,24 +64,6 @@ public class ProxyController {
                                     "GET, POST, PUT, DELETE, PATCH, OPTIONS")
                             .header("Access-Control-Allow-Headers", "*")
                             .body("")
-            );
-        }
-
-        // ✅ Skip WebSocket upgrade requests
-        if ("websocket".equalsIgnoreCase(upgrade)) {
-            return CompletableFuture.completedFuture(
-                    ResponseEntity.notFound().build()
-            );
-        }
-
-        // ✅ Skip system paths
-        boolean excluded = EXCLUDED.stream()
-                .anyMatch(uri::startsWith);
-
-        if (excluded) {
-            log.warn("⚠️ Skipping excluded path: {}", uri);
-            return CompletableFuture.completedFuture(
-                    ResponseEntity.notFound().build()
             );
         }
 
