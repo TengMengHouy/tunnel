@@ -60,3 +60,11 @@ logging:
   level:
     org.springframework.web.socket: DEBUG
     org.springframework.web: DEBUG
+    tomcat:
+      max-http-form-post-size: 50MB
+      max-swallow-size: 50MB
+
+    # ✅ Increase timeout for large responses
+    servlet:
+      session:
+        timeout: 30m
