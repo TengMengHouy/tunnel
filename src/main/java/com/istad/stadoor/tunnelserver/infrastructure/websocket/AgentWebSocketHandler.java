@@ -24,7 +24,7 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
     private final AgentSessionRegistry     registry;
     private final AuthApplicationService   authService;
     private final TunnelApplicationService tunnelService;
-    private final ProxyService             proxyService; // 👈 ADD
+    private final ProxyService             proxyService;
     private final ObjectMapper             mapper;
 
     // ── Connection Established ───────────────────────────────────
@@ -33,15 +33,24 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
         log.info("✅ Agent connected: sessionId={}", session.getId());
     }
 
-    // ── Handle Messages ──────────────────────────────────────────
+    // ── Handle Text Messages ─────────────────────────────────────
     @Override
     protected void handleTextMessage(
             WebSocketSession session,
-            TextMessage      message
+            TextMessage message
     ) throws Exception {
 
         log.info(">>> Raw: {}", message.getPayload());
-        WsMessage ws = mapper.readValue(message.getPayload(), WsMessage.class);
+
+        WsMessage ws;
+        try {
+            ws = mapper.readValue(message.getPayload(), WsMessage.class);
+        } catch (Exception e) {
+            log.error("❌ Failed to parse message: {}", e.getMessage());
+            sendError(session, null, "Invalid message format: " + e.getMessage());
+            return;
+        }
+
         log.info(">>> Type: {}", ws.getType());
 
         try {
@@ -49,13 +58,15 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
                 case "register"      -> handleRegister(session, ws);
                 case "heartbeat"     -> handleHeartbeat(session, ws);
                 case "tunnel_create" -> handleTunnelCreate(session, ws);
-                case "http_response" -> handleHttpResponse(ws);  // 👈 ADD
-                default              -> sendError(session,
-                        ws.getRequestId(),
-                        "Unknown type: " + ws.getType());
+                case "http_response" -> handleHttpResponse(ws);
+                default              -> {
+                    log.warn("⚠️ Unknown message type: {}", ws.getType());
+                    sendError(session, ws.getRequestId(),
+                            "Unknown type: " + ws.getType());
+                }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("❌ Handler error [{}]: {}", ws.getType(), e.getMessage(), e);
             sendError(session, ws.getRequestId(),
                     e.getMessage() != null ? e.getMessage() : e.getClass().getName());
         }
@@ -65,20 +76,48 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionClosed(
             WebSocketSession session,
-            CloseStatus      status
+            CloseStatus status
     ) {
         log.info("❌ Disconnected: sessionId={} | status={}", session.getId(), status);
+        registry.unregister(session);
+    }
+
+    // ── Transport Error ──────────────────────────────────────────
+    @Override
+    public void handleTransportError(
+            WebSocketSession session,
+            Throwable exception
+    ) {
+        log.error("❌ Transport error: sessionId={} | error={}",
+                session.getId(), exception.getMessage());
         registry.unregister(session);
     }
 
     // ── Handle Register ──────────────────────────────────────────
     private void handleRegister(WebSocketSession session, WsMessage ws) {
         try {
-            var p = ws.getPayload();
+            Map<String, Object> p = ws.getPayload();
             log.info(">>> Register payload: {}", p);
 
             String token  = str(p, "token");
-            UUID   userId = authService.validateToken(token);
+            String ip     = str(p, "ipAddress");
+            String host   = str(p, "hostName");
+            String port   = str(p, "hostPort");
+            String os     = str(p, "osType");
+
+            // Validate required fields
+            if (token.isBlank()) {
+                sendError(session, ws.getRequestId(), "Token is required");
+                return;
+            }
+
+            if (ip.isBlank()) {
+                sendError(session, ws.getRequestId(), "ipAddress is required");
+                return;
+            }
+
+            // Validate token
+            UUID userId = authService.validateToken(token);
             log.info(">>> Validated userId: {}", userId);
 
             UUID clientId = UUID.randomUUID();
@@ -87,15 +126,16 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
                     clientId,
                     userId,
                     token,
-                    str(p, "hostName"),
-                    str(p, "hostPort"),
-                    str(p, "ipAddress"),
-                    str(p, "osType")
+                    host,
+                    port,
+                    ip,
+                    os
             );
 
             registry.register(client, session);
             log.info("✅ Registered: clientId={}", clientId);
 
+            // Send back registered confirmation
             send(session, new WsMessage(
                     "registered",
                     ws.getRequestId(),
@@ -114,10 +154,16 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
 
     // ── Handle Heartbeat ─────────────────────────────────────────
     private void handleHeartbeat(WebSocketSession session, WsMessage ws) {
-        if (registry.getClientBySession(session).isEmpty()) {
+        boolean registered = registry.getClientBySession(session).isPresent();
+
+        if (!registered) {
+            log.warn("⚠️ Heartbeat from unregistered session: {}", session.getId());
             sendError(session, ws.getRequestId(), "Client not registered");
             return;
         }
+
+        log.debug("💓 Heartbeat from sessionId={}", session.getId());
+
         send(session, new WsMessage(
                 "heartbeat_ack",
                 ws.getRequestId(),
@@ -131,20 +177,32 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
                 .orElseThrow(() ->
                         new IllegalStateException("Client not registered"));
 
-        String basePath = str(ws.getPayload(), "basePath");
+        Map<String, Object> p = ws.getPayload();
+        String basePath = str(p, "basePath");
+
+        if (basePath.isBlank()) {
+            sendError(session, ws.getRequestId(), "basePath is required");
+            return;
+        }
+
+        log.info(">>> Tunnel create: basePath={} | clientId={}", basePath, client.getClientId());
 
         tunnelService.createTunnel(new CreateTunnelRequest(
                         client.getUserId(), basePath
                 ))
-                .thenAccept(tunnelId -> send(session, new WsMessage(
-                        "tunnel_created",
-                        ws.getRequestId(),
-                        Map.of(
-                                "tunnelId", tunnelId.toString(),
-                                "basePath", basePath
-                        )
-                )))
+                .thenAccept(tunnelId -> {
+                    log.info("✅ Tunnel created: tunnelId={}", tunnelId);
+                    send(session, new WsMessage(
+                            "tunnel_created",
+                            ws.getRequestId(),
+                            Map.of(
+                                    "tunnelId", tunnelId.toString(),
+                                    "basePath", basePath
+                            )
+                    ));
+                })
                 .exceptionally(ex -> {
+                    log.error("❌ Tunnel create failed: {}", ex.getMessage());
                     sendError(session, ws.getRequestId(),
                             ex.getMessage() != null
                                     ? ex.getMessage()
@@ -154,30 +212,62 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
     }
 
     // ── Handle HTTP Response from Agent ──────────────────────────
-    // 👇 ADD THIS
     private void handleHttpResponse(WsMessage ws) {
         String requestId = ws.getRequestId();
-        String body      = str(ws.getPayload(), "body");
 
-        log.info("✅ http_response: requestId={}", requestId);
+        if (requestId == null || requestId.isBlank()) {
+            log.warn("⚠️ http_response missing requestId");
+            return;
+        }
+
+        log.info("✅ http_response received | requestId={}", requestId);
+
+        try {
+            Map<String, Object> p = ws.getPayload();
+
+            // ── Try full AgentResponse format ─────────────────
+            AgentResponse agentResponse = mapper.convertValue(p, AgentResponse.class);
+
+            if (agentResponse != null &&
+                    (agentResponse.body() != null || agentResponse.bodyBase64() != null)) {
+                log.info("✓ Full AgentResponse | status={} | binary={}",
+                        agentResponse.status(), agentResponse.isBinary());
+                proxyService.completeResponse(requestId, agentResponse);
+                return;
+            }
+
+        } catch (Exception e) {
+            log.warn("⚠️ Failed to parse AgentResponse, fallback to plain body: {}", e.getMessage());
+        }
+
+        // ── Fallback: plain body string ───────────────────────
+        String body = str(ws.getPayload(), "body");
+        log.info("✓ Plain body fallback | requestId={} | length={}",
+                requestId, body.length());
         proxyService.completeResponse(requestId, body);
     }
 
     // ── Helpers ──────────────────────────────────────────────────
+
     private void send(WebSocketSession session, WsMessage msg) {
         try {
-            session.sendMessage(
-                    new TextMessage(mapper.writeValueAsString(msg)));
+            if (!session.isOpen()) {
+                log.warn("⚠️ Cannot send, session closed: {}", session.getId());
+                return;
+            }
+            session.sendMessage(new TextMessage(mapper.writeValueAsString(msg)));
         } catch (Exception e) {
-            log.error("Send failed: {}", e.getMessage());
+            log.error("❌ Send failed: sessionId={} | error={}",
+                    session.getId(), e.getMessage());
         }
     }
 
     private void sendError(
             WebSocketSession session,
-            String           requestId,
-            String           error
+            String requestId,
+            String error
     ) {
+        log.warn("⚠️ Sending error: requestId={} | error={}", requestId, error);
         send(session, new WsMessage(
                 "error",
                 requestId,
@@ -186,7 +276,8 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
     }
 
     private String str(Map<String, Object> map, String key) {
-        Object val = map != null ? map.get(key) : null;
+        if (map == null) return "";
+        Object val = map.get(key);
         return val != null ? val.toString() : "";
     }
 }
