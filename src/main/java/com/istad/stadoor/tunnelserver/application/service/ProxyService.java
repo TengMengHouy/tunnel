@@ -22,6 +22,7 @@ public class ProxyService {
     private final TunnelApplicationService tunnelService;
     private final ObjectMapper             mapper;
 
+    // ✅ Store pending responses from agent
     private final Map<String, CompletableFuture<String>> pending
             = new ConcurrentHashMap<>();
 
@@ -35,6 +36,7 @@ public class ProxyService {
         this.mapper        = mapper;
     }
 
+    // ── Forward Request to Agent ──────────────────────────────────
     public CompletableFuture<ResponseEntity<String>> forward(
             String             key,
             HttpServletRequest request
@@ -45,8 +47,7 @@ public class ProxyService {
                     log.info(">>> [PROXY] key={} | ip={} | port={}",
                             key, target.ipAddress(), target.localPort());
 
-                    // ✅ Find agent WebSocket session by IP
-                    // with fallback to first available
+                    // ✅ Find agent by IP with fallback
                     WebSocketSession session = registry
                             .getSessionByIp(target.ipAddress())
                             .orElseGet(() -> {
@@ -62,9 +63,9 @@ public class ProxyService {
                     String method    = request.getMethod();
                     String fullUri   = request.getRequestURI();
 
-                    // ✅ Extract path - handle both formats:
-                    // /proxy/{key}/path    -> /path
-                    // /{basePath}/{key}/path -> /path
+                    // ✅ Extract path after key
+                    // /houy/002c0b04/client/jph/users  -> /client/jph/users
+                    // /nextjs/abc123/about              -> /about
                     String path = extractPath(fullUri, key);
                     String body = readBody(request);
 
@@ -75,7 +76,7 @@ public class ProxyService {
                     CompletableFuture<String> future = new CompletableFuture<>();
                     pending.put(requestId, future);
 
-                    // Build payload
+                    // Build payload to send agent
                     Map<String, Object> payload = new LinkedHashMap<>();
                     payload.put("method",    method);
                     payload.put("path",      path);
@@ -95,10 +96,23 @@ public class ProxyService {
                         return CompletableFuture.failedFuture(e);
                     }
 
-                    // Wait for agent response (30s timeout)
+                    // ✅ Wait for agent response with CORS headers
                     return future
                             .orTimeout(30, TimeUnit.SECONDS)
-                            .thenApply(ResponseEntity::ok)
+                            .thenApply(responseBody -> {
+                                // ✅ Detect content type
+                                String contentType = detectContentType(responseBody);
+
+                                log.info("✓ [PROXY] Response contentType={}", contentType);
+
+                                return ResponseEntity.ok()
+                                        .header("Access-Control-Allow-Origin", "*")
+                                        .header("Access-Control-Allow-Methods",
+                                                "GET, POST, PUT, DELETE, PATCH, OPTIONS")
+                                        .header("Access-Control-Allow-Headers", "*")
+                                        .header("Content-Type", contentType)
+                                        .body(responseBody);
+                            })
                             .whenComplete((r, e) -> {
                                 pending.remove(requestId);
                                 if (e != null) {
@@ -119,20 +133,32 @@ public class ProxyService {
         }
     }
 
-    // ── Extract Path ──────────────────────────────────────────────
-    // Handles both:
-    // /proxy/002c0b04/client/jph/users  -> /client/jph/users
-    // /houy/002c0b04/client/jph/users   -> /client/jph/users
+    // ── Extract Path After Key ────────────────────────────────────
+    // /houy/002c0b04/client/jph/users  -> /client/jph/users
+    // /nextjs/abc123/about             -> /about
+    // /proxy/abc123/api/users          -> /api/users
     private String extractPath(String uri, String key) {
-        // Find key position in URI
         int keyIndex = uri.indexOf(key);
         if (keyIndex == -1) return "/";
-
-        // Get everything after the key
         String afterKey = uri.substring(keyIndex + key.length());
-
-        // Make sure it starts with /
         return afterKey.isEmpty() ? "/" : afterKey;
+    }
+
+    // ── Detect Content Type ───────────────────────────────────────
+    private String detectContentType(String body) {
+        if (body == null) return "text/plain";
+        String trimmed = body.trim();
+        if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+            return "application/json";
+        } else if (trimmed.startsWith("<!DOCTYPE") ||
+                trimmed.startsWith("<html") ||
+                trimmed.startsWith("<HTML")) {
+            return "text/html; charset=utf-8";
+        } else if (trimmed.startsWith("<")) {
+            return "text/xml";
+        } else {
+            return "text/plain";
+        }
     }
 
     // ── Read Request Body ─────────────────────────────────────────

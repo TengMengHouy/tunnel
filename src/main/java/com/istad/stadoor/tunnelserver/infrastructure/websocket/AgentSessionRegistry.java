@@ -18,27 +18,28 @@ public class AgentSessionRegistry {
     private final Map<String, UUID>           sessionIdToClientId = new ConcurrentHashMap<>();
     private final Map<String, UUID>           ipToClientId        = new ConcurrentHashMap<>();
 
-    // ── Register ─────────────────────────────────────────────────
+    // ── Register ──────────────────────────────────────────────────
     public void register(ConnectedClient client, WebSocketSession session) {
         sessions.put(client.getClientId(), session);
         clients.put(client.getClientId(), client);
         sessionIdToClientId.put(session.getId(), client.getClientId());
 
-        // ✅ ADD THIS
+        // ✅ Store IP -> ClientId mapping
         ipToClientId.put(client.getIpAddress(), client.getClientId());
 
         log.info("✅ Registered: clientId={} | ip={}",
                 client.getClientId(), client.getIpAddress());
+        log.info("✅ IP Map: {}", ipToClientId);
     }
 
-    // ── Unregister ───────────────────────────────────────────────
+    // ── Unregister ────────────────────────────────────────────────
     public void unregister(WebSocketSession session) {
         UUID clientId = sessionIdToClientId.remove(session.getId());
         if (clientId != null) {
             ConnectedClient client = clients.remove(clientId);
             sessions.remove(clientId);
 
-            // ✅ ADD THIS - Remove IP mapping
+            // ✅ Remove IP mapping
             if (client != null) {
                 ipToClientId.remove(client.getIpAddress());
                 log.info("❌ Unregistered: clientId={} | ip={}",
@@ -47,18 +48,26 @@ public class AgentSessionRegistry {
         }
     }
 
-    // ── Get Session by IP ─────────────────────────────────────────
+    // ── Get Session By IP ─────────────────────────────────────────
     public Optional<WebSocketSession> getSessionByIp(String ipAddress) {
         log.info("🔍 Looking for ip={} | available={}",
                 ipAddress, ipToClientId);
 
         UUID clientId = ipToClientId.get(ipAddress);
         if (clientId == null) {
-            log.warn("⚠️ No session found for ip={}", ipAddress);
+            log.warn("⚠️ No session for ip={}", ipAddress);
             return Optional.empty();
         }
+
         return Optional.ofNullable(sessions.get(clientId))
                 .filter(WebSocketSession::isOpen);
+    }
+
+    // ── Get First Available Session ───────────────────────────────
+    public Optional<WebSocketSession> getFirstAvailableSession() {
+        return sessions.values().stream()
+                .filter(WebSocketSession::isOpen)
+                .findFirst();
     }
 
     // ── Get Session ───────────────────────────────────────────────
@@ -78,13 +87,6 @@ public class AgentSessionRegistry {
     // ── Get ClientId By Session ───────────────────────────────────
     public Optional<UUID> getClientIdBySession(WebSocketSession session) {
         return Optional.ofNullable(sessionIdToClientId.get(session.getId()));
-    }
-
-    // ── Get First Available Session (fallback) ────────────────────
-    public Optional<WebSocketSession> getFirstAvailableSession() {
-        return sessions.values().stream()
-                .filter(WebSocketSession::isOpen)
-                .findFirst();
     }
 
     // ── Is Connected ──────────────────────────────────────────────
