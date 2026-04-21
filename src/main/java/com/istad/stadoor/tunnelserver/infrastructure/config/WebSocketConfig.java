@@ -2,12 +2,10 @@ package com.istad.stadoor.tunnelserver.infrastructure.config;
 
 import com.istad.stadoor.tunnelserver.infrastructure.websocket.AgentWebSocketHandler;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.annotation.Order;
 import org.springframework.web.socket.config.annotation.*;
 
 @Configuration
 @EnableWebSocket
-@Order(1) // ✅ Highest priority
 public class WebSocketConfig implements WebSocketConfigurer {
 
     private final AgentWebSocketHandler handler;
@@ -18,7 +16,9 @@ public class WebSocketConfig implements WebSocketConfigurer {
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(handler, "/ws/agent")
+        // ✅ Change from /ws/agent to /agent-ws
+        // ProxyController pattern /{basePath}/{key}/** won't match this!
+        registry.addHandler(handler, "/agent-ws")
                 .setAllowedOrigins("*");
     }
 }
