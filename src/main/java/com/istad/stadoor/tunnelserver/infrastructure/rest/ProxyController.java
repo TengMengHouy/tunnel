@@ -14,61 +14,45 @@ import java.util.concurrent.CompletableFuture;
 @Slf4j
 @RestController
 @RequiredArgsConstructor
-@Order(Integer.MAX_VALUE) // ✅ Lowest priority
+@Order(Integer.MAX_VALUE)
 public class ProxyController {
 
     private final ProxyService proxyService;
 
-    private static final List<String> EXCLUDED = List.of(
+    // Only exclude truly internal tunnel server paths
+    private static final List<String> EXCLUDED_PATHS = List.of(
             "/ws",
-            "/api",
             "/actuator",
             "/error",
-            "/favicon.ico"
+            "/favicon.ico",
+            "/api/tunnel",      // internal tunnel management
+            "/api/register",    // if you have registration endpoint
+            "/api/health"
     );
 
     @RequestMapping("/{basePath}/{key}/**")
     public CompletableFuture<ResponseEntity<String>> proxy(
             @PathVariable String basePath,
             @PathVariable String key,
-            HttpServletRequest request
-    ) {
-        String uri     = request.getRequestURI();
-        String upgrade = request.getHeader("Upgrade");
-        String method  = request.getMethod();
+            HttpServletRequest request) {
 
-        // ✅ Check excluded FIRST
-        boolean excluded = EXCLUDED.stream()
-                .anyMatch(uri::startsWith);
+        String uri = request.getRequestURI();
 
-        if (excluded) {
+        // Check if this is an internal path that should NOT be proxied
+        boolean isExcluded = EXCLUDED_PATHS.stream().anyMatch(uri::startsWith);
+
+        if (isExcluded) {
             log.warn("⚠️ Excluded: {}", uri);
-            return CompletableFuture.completedFuture(
-                    ResponseEntity.notFound().build()
-            );
+            return CompletableFuture.completedFuture(ResponseEntity.notFound().build());
         }
 
-        // ✅ Check WebSocket
-        if ("websocket".equalsIgnoreCase(upgrade)) {
-            return CompletableFuture.completedFuture(
-                    ResponseEntity.notFound().build()
-            );
+        // Optional: Skip WebSocket upgrade
+        if ("websocket".equalsIgnoreCase(request.getHeader("Upgrade"))) {
+            return CompletableFuture.completedFuture(ResponseEntity.notFound().build());
         }
 
-        // ✅ Handle OPTIONS
-        if ("OPTIONS".equalsIgnoreCase(method)) {
-            return CompletableFuture.completedFuture(
-                    ResponseEntity.ok()
-                            .header("Access-Control-Allow-Origin", "*")
-                            .header("Access-Control-Allow-Methods",
-                                    "GET, POST, PUT, DELETE, PATCH, OPTIONS")
-                            .header("Access-Control-Allow-Headers", "*")
-                            .body("")
-            );
-        }
-
-        log.info(">>> [PROXY] {} | basePath={} | key={}",
-                method, basePath, key);
+        log.info(">>> [PROXY] {} | ClientID={} | Path={}",
+                request.getMethod(), key, uri);
 
         return proxyService.forward(key, request);
     }
