@@ -6,7 +6,7 @@ server:
 
 spring:
   main:
-    allow-bean-definition-overriding: true  # ← Important
+    allow-bean-definition-overriding: true
   mvc:
     async:
       request-timeout: 35000
@@ -28,6 +28,10 @@ spring:
   servlet:
     session:
       timeout: 30m
+
+# ✅ Tunnel domain config
+tunnel:
+  domain: 192.168.43.219.nip.io   # ← Free wildcard DNS
 
 app:
   auth:
@@ -59,6 +63,5 @@ axon:
 logging:
   level:
     root: INFO
-    org.springframework.web.socket: DEBUG
-    org.springframework.web.servlet: DEBUG
     com.istad.stadoor: DEBUG
+    org.springframework.web.socket: DEBUG

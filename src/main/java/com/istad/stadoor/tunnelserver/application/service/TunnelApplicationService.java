@@ -48,9 +48,8 @@ public class TunnelApplicationService {
         ).thenApply(r -> null);
     }
 
-    // ── Add Target ───────────────────────────────────────────────
     public CompletableFuture<TargetResponse> addTarget(
-            UUID             tunnelId,
+            UUID tunnelId,
             AddTargetRequest request
     ) {
         return queryGateway.query(
@@ -60,8 +59,9 @@ public class TunnelApplicationService {
 
             UUID   targetId  = UUID.randomUUID();
             String key       = UUID.randomUUID().toString().substring(0, 8);
-            String publicUrl = "https://stadoor.com/"
-                    + tunnel.getBasePath() + "/" + key;
+
+            // ✅ ngrok-style URL
+            String publicUrl = "http://" + key + ".192.168.43.219.nip.io:8080";
 
             return commandGateway.<Object>send(new AddTunnelTargetCommand(
                     tunnelId,
