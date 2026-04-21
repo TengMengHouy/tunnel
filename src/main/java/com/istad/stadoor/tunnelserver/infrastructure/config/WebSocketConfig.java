@@ -26,11 +26,11 @@ public class WebSocketConfig implements WebSocketConfigurer {
     public ServletServerContainerFactoryBean createWebSocketContainer() {
         ServletServerContainerFactoryBean container = new ServletServerContainerFactoryBean();
 
-        // ✅ 50MB buffer - handles large Next.js JS chunks
-        container.setMaxTextMessageBufferSize(50 * 1024 * 1024);
-        container.setMaxBinaryMessageBufferSize(50 * 1024 * 1024);
-        container.setMaxSessionIdleTimeout(300_000L); // 5 min
-        container.setAsyncSendTimeout(60_000L);       // 60 sec
+        // ✅ Large buffer to handle Next.js large JS chunks and images
+        container.setMaxTextMessageBufferSize(50 * 1024 * 1024);   // 50 MB
+        container.setMaxBinaryMessageBufferSize(50 * 1024 * 1024); // 50 MB
+        container.setMaxSessionIdleTimeout(300_000L);              // 5 minutes
+        container.setAsyncSendTimeout(60_000L);                    // 60 seconds
 
         return container;
     }
